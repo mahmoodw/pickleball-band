@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import subprocess
 import zipfile
+import xml.etree.ElementTree as ET
+from fetch_notify_sdk import FILENAME, verified_classes
 
 ROOT = Path(__file__).resolve().parents[1]
 JDK = Path(os.environ['PICKLEBALL_JDK'])
@@ -15,6 +17,12 @@ SIGN = ROOT / 'sign'
 for p in [OUT / 'classes', OUT / 'dex', DIST, SIGN]:
     p.mkdir(parents=True, exist_ok=True)
 env = dict(os.environ, JAVA_HOME=str(JDK), PATH=str(JDK / 'bin') + os.pathsep + os.environ['PATH'])
+manifest = ET.parse(ROOT / 'android/AndroidManifest.xml').getroot()
+version = manifest.attrib['{http://schemas.android.com/apk/res/android}versionName']
+# The two vendors ship an identically named AAR. Check the bytes and derive the
+# jar each build so an old official SDK cannot silently survive an upgrade.
+jar = ROOT / 'android/libs/xms.jar'
+jar.write_bytes(verified_classes((ROOT / 'android/libs' / FILENAME).read_bytes()))
 
 def run(*args):
     subprocess.run([str(a) for a in args], check=True, env=env, cwd=ROOT)
@@ -42,7 +50,6 @@ for kind in ['debug', 'release']:
         (dest / name).write_bytes((SIGN / name).read_bytes())
         os.chmod(dest / name, 0o600)
 
-jar = ROOT / 'android/libs/xms.jar'
 run(JDK / 'bin/javac', '--release', '8', '-classpath', str(SDK / 'android.jar') + os.pathsep + str(jar),
     '-d', OUT / 'classes', *sorted((ROOT / 'android/src').rglob('*.java')))
 classjar = OUT / 'app.jar'
@@ -57,7 +64,7 @@ with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED) as z:
         z.write(p, p.name)
 aligned = OUT / 'aligned.apk'
 run(TOOLS / 'zipalign', '-f', '4', unsigned, aligned)
-apk = DIST / 'pickleball-phone-0.1.0.apk'
+apk = DIST / ('pickleball-phone-' + version + '.apk')
 run(TOOLS / 'apksigner', 'sign', '--ks', keystore, '--ks-key-alias', 'pickleball',
     '--ks-pass', 'pass:' + password, '--out', apk, aligned)
 run(TOOLS / 'apksigner', 'verify', '--verbose', apk)

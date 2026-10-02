@@ -39,18 +39,18 @@ public class MainActivity extends Activity {
             startService(new Intent(this,AnnouncerService.class).setAction("test"));
         });
         button(body,"Grant band access / select band",this::grant);
-        button(body,"Open Mi Fitness",() -> {
-            Intent launch = getPackageManager().getLaunchIntentForPackage("com.xiaomi.wearable");
-            if (launch == null) launch = getPackageManager().getLaunchIntentForPackage("com.mi.health");
-            if (launch != null) startActivity(launch); else feedback.setText("Mi Fitness is required for Xiaomi's official connection.");
+        button(body,"Open Notify",() -> {
+            Intent launch = NotifyBridge.launchIntent(this);
+            if (launch != null) startActivity(launch); else feedback.setText(NotifyBridge.missingMessage(this));
         });
         button(body,"Voice settings",() -> {
             try { startActivity(new Intent("com.android.settings.TTS_SETTINGS")); }
             catch (Exception e) { feedback.setText("Open Android Settings and search for Text-to-speech."); }
         });
         button(body,"Stop announcer",() -> { stopService(new Intent(this,AnnouncerService.class)); render(); });
+        button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Install the matching band app using Notify. Xiaomi's official connection requires Mi Fitness to see the band and grant this app access. Keep the announcer running during play. Audio follows your phone's media volume and output.\n\nPrototype: connection and speech with the phone locked still need testing on your Band 10.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Pickleball uses Notify's Interconnect service; Mi Fitness and Tasker are not required. Keep the announcer running during play. Audio follows your phone's media volume and output.\n\nVersion 0.1.1. Your existing Pickleball 0.1.0 band app is compatible.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;
@@ -67,19 +67,39 @@ public class MainActivity extends Activity {
         speech.setText(p.getString("speech","Use Test phone voice before your first game."));
     }
     private void grant() {
-        feedback.setText("Looking for bands in Mi Fitness...");
-        handler.postDelayed(() -> { if (feedback.getText().toString().equals("Looking for bands in Mi Fitness...")) feedback.setText("Mi Fitness is not responding. Open it, confirm the band is connected, then retry."); },8000);
+        if (NotifyBridge.availablePackage(this).isEmpty()) { feedback.setText(NotifyBridge.missingMessage(this)); return; }
+        feedback.setText("Looking for bands in Notify...");
+        handler.postDelayed(() -> { if (feedback.getText().toString().equals("Looking for bands in Notify...")) feedback.setText("Notify is not responding. Open it, confirm the band is connected, then retry."); },8000);
         Wearable.getNodeApi(this).getConnectedNodes().addOnSuccessListener(nodes -> runOnUiThread(() -> {
-            if (nodes.isEmpty()) { feedback.setText("Mi Fitness sees no connected band. Open Mi Fitness first."); return; }
+            if (nodes.isEmpty()) { feedback.setText("Notify sees no connected band. Open Notify first."); return; }
             String[] names=new String[nodes.size()]; for(int i=0;i<nodes.size();i++) names[i]=nodes.get(i).name;
             new AlertDialog.Builder(this).setTitle("Choose your band").setItems(names,(d,index) -> {
                 Node node=nodes.get(index);
-                getSharedPreferences(AnnouncerService.PREFS,0).edit().putString("selectedNode",node.id).apply();
+                getSharedPreferences(AnnouncerService.PREFS,0).edit().putString("selectedNode",node.id).putString("transport","notify").apply();
                 Wearable.getAuthApi(this).requestPermission(node.id,Permission.DEVICE_MANAGER)
-                    .addOnSuccessListener(result -> runOnUiThread(() -> feedback.setText("Access request completed. Start the announcer and open the band app.")))
+                    .addOnSuccessListener(result -> runOnUiThread(() -> {
+                        boolean granted=false;
+                        for (Permission permission : result) if (permission.getName().equals(Permission.DEVICE_MANAGER.getName())) granted=true;
+                        feedback.setText(granted ? "Band access granted. Start the announcer and open the band app." : "Band access was not granted. Check the authorization prompt in Notify.");
+                    }))
                     .addOnFailureListener(error -> runOnUiThread(() -> feedback.setText("Access request failed: "+error.getMessage())));
             }).setNegativeButton("Cancel",null).show();
-        })).addOnFailureListener(error -> runOnUiThread(() -> feedback.setText("Mi Fitness error: "+error.getMessage())));
+        })).addOnFailureListener(error -> runOnUiThread(() -> feedback.setText("Notify error: "+error.getMessage())));
+    }
+    private void copyDiagnostics() {
+        SharedPreferences p=getSharedPreferences(AnnouncerService.PREFS,0);
+        StringBuilder text=new StringBuilder("Pickleball 0.1.1 / Android API ").append(Build.VERSION.SDK_INT);
+        for (String name : NotifyBridge.PACKAGES) {
+            try { text.append("\n").append(name).append(" ").append(getPackageManager().getPackageInfo(name,0).versionName); }
+            catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
+        }
+        text.append("\nNotify service visible: ").append(!NotifyBridge.availablePackage(this).isEmpty());
+        text.append("\nAnnouncer running: ").append(AnnouncerService.running);
+        text.append("\nConnection: ").append(p.getString("connection","Not started"));
+        text.append("\nVoice: ").append(p.getString("speech","Not started"));
+        text.append("\nSelection: ").append(feedback.getText());
+        getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Pickleball connection",text.toString()));
+        feedback.setText("Connection details copied. Paste them into your bug report or chat.");
     }
     @Override public void onResume() { super.onResume(); handler.post(refresh); }
     @Override public void onPause() { handler.removeCallbacks(refresh); super.onPause(); }

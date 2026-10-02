@@ -9,6 +9,7 @@ import com.xiaomi.xms.wearable.Wearable;
 import com.xiaomi.xms.wearable.node.Node;
 import com.xiaomi.xms.wearable.message.MessageApi;
 import com.xiaomi.xms.wearable.service.OnServiceConnectionListener;
+import com.xiaomi.xms.wearable.service.ServiceApi;
 import org.json.JSONObject;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -18,6 +19,7 @@ public class AnnouncerService extends Service {
     static volatile boolean running;
     private final Handler main = new Handler(Looper.getMainLooper());
     private MessageApi messages;
+    private ServiceApi serviceApi;
     private TextToSpeech tts;
     private boolean ttsReady, querying, attaching, registered, destroyed;
     private String node = "", challenge = "", activeUtterance = "";
@@ -29,13 +31,18 @@ public class AnnouncerService extends Service {
     private final Runnable poll = new Runnable() { public void run() { discover(); main.postDelayed(this, 8000); } };
     private final OnServiceConnectionListener serviceListener = new OnServiceConnectionListener() {
         public void onServiceConnected() { main.post(() -> { if (!destroyed) { querying = false; discover(); } }); }
-        public void onServiceDisconnected() { main.post(() -> { cancelSpeech(); registered = false; attaching = false; node = ""; challenge = ""; status("Mi Fitness disconnected. Open it to reconnect the band."); }); }
+        public void onServiceDisconnected() { main.post(() -> { cancelSpeech(); registered = false; attaching = false; node = ""; challenge = ""; status("Notify disconnected. Open Notify to reconnect the band."); }); }
     };
     @Override public void onCreate() {
         super.onCreate(); running = true;
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel("announcer", "Game announcements", NotificationManager.IMPORTANCE_LOW));
-        startForeground(1, notification("Connecting to Mi Fitness..."));
+        startForeground(1, notification("Connecting through Notify..."));
+        SharedPreferences prefs = getSharedPreferences(PREFS, 0);
+        if (!"notify".equals(prefs.getString("transport", ""))) {
+            // IDs saved by the old Mi Fitness provider do not identify Notify nodes.
+            prefs.edit().remove("selectedNode").putString("transport", "notify").apply();
+        }
         audio = getSystemService(AudioManager.class);
         AudioAttributes attrs = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attrs)
@@ -58,8 +65,6 @@ public class AnnouncerService extends Service {
             public void onDone(String id) { main.post(() -> finishSpeech(id, true)); }
             public void onError(String id) { main.post(() -> finishSpeech(id, false)); }
         });
-        messages = Wearable.getMessageApi(this);
-        Wearable.getServiceApi(this).registerServiceConnectionListener(serviceListener);
         main.post(poll);
     }
     @Override public int onStartCommand(Intent intent, int flags, int id) {
@@ -69,10 +74,22 @@ public class AnnouncerService extends Service {
     }
     private void discover() {
         if (destroyed) return;
+        if (NotifyBridge.availablePackage(this).isEmpty()) {
+            detach(); status(NotifyBridge.missingMessage(this)); return;
+        }
+        if (messages == null) {
+            try {
+                messages = Wearable.getMessageApi(this);
+                serviceApi = Wearable.getServiceApi(this);
+                serviceApi.registerServiceConnectionListener(serviceListener);
+            } catch (RuntimeException error) {
+                messages = null; status("Notify service access failed: " + error.getMessage()); return;
+            }
+        }
         long now = android.os.SystemClock.elapsedRealtime();
         if (querying && now - queryStarted < 15000) return;
         if (attaching && now - attachingStarted < 15000) return;
-        if (attaching) { attaching = false; status("Band listener timed out. Check Mi Fitness permissions."); }
+        if (attaching) { attaching = false; status("Band listener timed out. Open Notify and check band access."); }
         querying = true; queryStarted = now;
         final long generation = queryStarted;
         Wearable.getNodeApi(this).getConnectedNodes().addOnSuccessListener(nodes -> main.post(() -> {
@@ -84,16 +101,16 @@ public class AnnouncerService extends Service {
             if (chosen == null && wanted.isEmpty() && nodes.size() == 1) chosen = nodes.get(0);
             if (chosen == null) {
                 detach();
-                status(nodes.isEmpty() || !wanted.isEmpty() ? "Mi Fitness cannot see your selected band. Open Mi Fitness to reconnect, or select a band again." : "Multiple wearables connected. Select your Band 10 in this app.");
+                status(nodes.isEmpty() || !wanted.isEmpty() ? "Notify cannot see your selected band. Open Notify to reconnect, or select a band again." : "Multiple wearables connected. Select your Band 10 in this app.");
                 return;
             }
             if (!chosen.id.equals(node) || !registered) attach(chosen.id);
         })).addOnFailureListener(error -> main.post(() -> {
             if (destroyed || generation != queryStarted) return;
-            querying = false; detach(); status("Mi Fitness connection failed: " + error.getMessage());
+            querying = false; detach(); status("Notify connection failed: " + error.getMessage());
         }));
         main.postDelayed(() -> {
-            if (!destroyed && querying && queryStarted == generation) status("Waiting for Mi Fitness. Open it and check that your band is connected.");
+            if (!destroyed && querying && queryStarted == generation) status("Waiting for Notify's Interconnect service. Open Notify, confirm the band is connected, then retry.");
         }, 6000);
     }
     private void attach(String id) {
@@ -111,7 +128,7 @@ public class AnnouncerService extends Service {
             }));
     }
     private void detach() {
-        if (!node.isEmpty()) messages.removeListener(node);
+        if (messages != null && !node.isEmpty()) messages.removeListener(node);
         node = ""; challenge = ""; registered = false; attaching = false;
     }
     private void hello() {
@@ -166,7 +183,7 @@ public class AnnouncerService extends Service {
     private void ack(Score s, String result) {
         try { send(new JSONObject().put("type","ack").put("session",s.session).put("sequence",s.sequence).put("status",result)); } catch (Exception ignored) {}
     }
-    private void send(JSONObject p) { if (!node.isEmpty()) messages.sendMessage(node, p.toString().getBytes(StandardCharsets.UTF_8)); }
+    private void send(JSONObject p) { if (messages != null && !node.isEmpty()) messages.sendMessage(node, p.toString().getBytes(StandardCharsets.UTF_8)); }
     private void speechStatus(String text) { getSharedPreferences(PREFS,0).edit().putString("speech",text).apply(); }
     private void status(String text) {
         if (destroyed) return;
@@ -182,7 +199,7 @@ public class AnnouncerService extends Service {
     }
     @Override public void onDestroy() {
         destroyed = true; running = false; main.removeCallbacksAndMessages(null); cancelSpeech(); detach();
-        Wearable.getServiceApi(this).unregisterServiceConnectionListener(serviceListener);
+        if (serviceApi != null) serviceApi.unregisterServiceConnectionListener(serviceListener);
         if (tts != null) tts.shutdown();
         getSharedPreferences(PREFS,0).edit().putString("connection","Stopped. Tap Start announcer before playing.").apply();
         super.onDestroy();
