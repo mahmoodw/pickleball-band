@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
         button(body,"Request band access (if needed)",this::grantAccess);
         button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Audio follows your phone's media volume and output.\n\nVersion 0.1.2. Your existing Pickleball band app is compatible.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Audio follows your phone's media volume and output.\n\nVersion 0.1.2. Update the band app to 0.1.2 for Reconnect and connection diagnostics.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;

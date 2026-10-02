@@ -10,12 +10,13 @@
       <div class="row scores"><text class="half score">{{us}}</text><text class="half score">{{them}}</text></div>
       <text class="call">{{scoreCall}}</text>
       <text class="hint">{{serveLabel}}</text>
-      <text class="status">{{phoneStatus}}</text>
+      <text class="status" onclick="connectionSettings">{{phoneStatus}}</text>
       <div class="button primary" onclick="weWon"><text class="primaryText">We won rally</text></div>
       <div class="button secondary" onclick="theyWon"><text class="buttonText">They won rally</text></div>
       <div class="row">
-        <div class="button half small" onclick="undo"><text class="buttonText">Undo</text></div>
-        <div class="button half small" onclick="repeat"><text class="buttonText">Speak</text></div>
+        <div class="button third small" onclick="undo"><text class="compactText">Undo</text></div>
+        <div class="button third small" onclick="repeat"><text class="compactText">Speak</text></div>
+        <div class="button third small" onclick="connectionSettings"><text class="compactText">Connect</text></div>
       </div>
       <div class="row">
         <div class="button half small" onclick="edit"><text class="buttonText">Correct</text></div>
@@ -36,7 +37,7 @@
       <div class="button" onclick="back"><text class="buttonText">Cancel</text></div>
     </div>
     <div if="{{screen === 'new'}}" class="panel">
-      <text class="title">NEW GAME</text>
+      <div class="row"><text class="newTitle">NEW GAME</text><text class="connectLink" onclick="connectionSettings">Connect</text></div>
       <text class="hint">Traditional scoring</text>
       <div class="button" onclick="toggleMode"><text class="buttonText">{{newMode}}</text></div>
       <div class="button" onclick="toggleFirst"><text class="buttonText">First serve: {{newFirst}}</text></div>
@@ -46,6 +47,15 @@
       <div class="button primary" onclick="startGame"><text class="primaryText">Start game</text></div>
       <div if="{{hasGame}}" class="button" onclick="back"><text class="buttonText">Cancel</text></div>
     </div>
+    <div if="{{screen === 'connection'}}" class="panel">
+      <text class="title">PHONE CONNECTION</text>
+      <text class="linkStatus">{{phoneStatus}}</text>
+      <text class="linkDetails">{{linkDetails}}</text>
+      <text class="linkHelp">Keep Notify connected. Open Pickleball on the phone and start the announcer.</text>
+      <div class="button primary" onclick="reconnect"><text class="primaryText">Reconnect</text></div>
+      <div class="button" onclick="connectionBack"><text class="buttonText">Back</text></div>
+      <text class="linkHelp">Your score and undo history are kept.</text>
+    </div>
   </div>
 </template>
 <script>
@@ -54,50 +64,19 @@ import interconnect from '@system.interconnect';
 import vibrator from '@system.vibrator';
 const rules = require('../../common/scoring');
 let game, draft, connection, heartbeat, ackTimer, session, sequence, challenge;
+let linkGeneration = 0, alive = false;
 let busy = false;
 export default {
   private: {
     screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '',
-    phoneStatus: 'Phone offline', notice: '', editUs: 0, editThem: 0,
+    phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', notice: '', editUs: 0, editThem: 0,
     editServing: 'Us', editServer: 2, isDoubles: true,
     newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: ''
   },
   onInit() {
-    game = null; busy = false; sequence = 0; challenge = '';
+    game = null; busy = false; sequence = 0; challenge = ''; alive = true;
     session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-    try { connection = interconnect.instance(); }
-    catch (_) {
-      connection = {send: args => { if (args.fail) args.fail(); }, getReadyState: args => args.success({status: 2})};
-    }
-    connection.onopen = () => { challenge = ''; this.hello(); };
-    connection.onclose = () => { challenge = ''; this.phoneStatus = 'Phone offline'; };
-    connection.onerror = () => { challenge = ''; this.phoneStatus = 'Phone offline'; };
-    connection.onmessage = event => {
-      try {
-        const raw = event.data;
-        const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (msg.type === 'hello' && typeof msg.challenge === 'string') {
-          challenge = msg.challenge;
-          this.phoneStatus = 'Phone connected';
-          if (game) this.send('sync');
-        } else if (msg.type === 'ack' && msg.session === session && msg.sequence === sequence) {
-          clearTimeout(ackTimer);
-          if (msg.status === 'spoken') this.phoneStatus = 'Score spoken';
-          else if (msg.status === 'speaking') {
-            this.phoneStatus = 'Phone speaking...';
-            ackTimer = setTimeout(() => { this.phoneStatus = 'Speech not confirmed'; }, 15000);
-          }
-          else if (msg.status === 'synced') this.phoneStatus = 'Phone connected';
-          else this.phoneStatus = 'Speech unavailable';
-        }
-      } catch (_) { this.phoneStatus = 'Connection error'; }
-    };
-    heartbeat = setInterval(() => {
-      connection.getReadyState({success: r => {
-        if (r.status !== 1) { challenge = ''; this.phoneStatus = 'Phone offline'; }
-        else if (!challenge) this.hello();
-      }, fail: () => { challenge = ''; this.phoneStatus = 'Phone offline'; }});
-    }, 8000);
+    this.refreshConnection(false);
     storage.get({key: 'pickleball.game.v1', default: '', success: value => {
       if (value) {
         try { game = rules.restore(value); this.render(); this.screen = 'game'; }
@@ -106,7 +85,96 @@ export default {
       this.hello();
     }, fail: () => { this.newWarning = 'Could not read saved game.'; this.screen = 'new'; this.hello(); }});
   },
-  onDestroy() { clearInterval(heartbeat); clearTimeout(ackTimer); connection.onmessage = null; connection.onopen = null; connection.onclose = null; connection.onerror = null; },
+  onShow() {
+    this.refreshConnection(false);
+    clearInterval(heartbeat);
+    heartbeat = setInterval(() => {
+      if (!challenge) this.hello();
+    }, 8000);
+  },
+  onHide() { clearInterval(heartbeat); },
+  onDestroy() {
+    alive = false; ++linkGeneration;
+    clearInterval(heartbeat); clearTimeout(ackTimer);
+    this.unbindConnection();
+  },
+  unbindConnection() {
+    if (!connection) return;
+    connection.onmessage = null; connection.onopen = null;
+    connection.onclose = null; connection.onerror = null;
+  },
+  connectionSettings() {
+    this.connectionReturn = this.screen;
+    this.screen = 'connection';
+    this.reconnect();
+  },
+  connectionBack() { this.screen = this.connectionReturn; },
+  reconnect() { this.refreshConnection(true); },
+  refreshConnection(diagnose) {
+    // Vela owns the physical connection. Reacquire its singleton and retry our
+    // handshake; never replace the saved game to refresh communication.
+    const generation = ++linkGeneration;
+    challenge = ''; clearTimeout(ackTimer);
+    this.unbindConnection(); connection = null;
+    this.phoneStatus = 'Connecting...';
+    this.linkDetails = 'Waiting for the phone app. Keep Notify and the announcer running.';
+    try { connection = interconnect.instance(); }
+    catch (error) { this.phoneStatus = 'Connection unavailable'; this.linkDetails = String(error); return; }
+    const current = () => alive && generation === linkGeneration;
+    connection.onopen = () => { if (current()) { challenge = ''; this.hello(); } };
+    connection.onclose = event => {
+      if (!current()) return;
+      challenge = ''; clearTimeout(ackTimer);
+      this.phoneStatus = 'Phone offline'; this.linkDetails = this.connectionError('Closed', event);
+    };
+    connection.onerror = event => {
+      if (!current()) return;
+      challenge = ''; clearTimeout(ackTimer);
+      this.phoneStatus = 'Connection error'; this.linkDetails = this.connectionError('Link', event);
+    };
+    connection.onmessage = event => {
+      if (!current()) return;
+      try {
+        const raw = event.data;
+        const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (msg.type === 'hello' && typeof msg.challenge === 'string') {
+          clearTimeout(ackTimer);
+          challenge = msg.challenge;
+          this.phoneStatus = 'Phone connected';
+          this.linkDetails = 'Phone handshake received.';
+          if (game) this.send('sync');
+        } else if (msg.type === 'ack' && msg.session === session && msg.sequence === sequence) {
+          clearTimeout(ackTimer);
+          if (msg.status === 'spoken') this.phoneStatus = 'Score spoken';
+          else if (msg.status === 'speaking') {
+            this.phoneStatus = 'Phone speaking...';
+            ackTimer = setTimeout(() => { this.phoneStatus = 'Speech not confirmed'; }, 15000);
+          }
+          else if (msg.status === 'synced') { this.phoneStatus = 'Phone connected'; this.linkDetails = 'Score synchronized with the phone.'; }
+          else this.phoneStatus = 'Speech unavailable';
+        }
+      } catch (_) { this.phoneStatus = 'Connection error'; this.linkDetails = 'Phone sent an unreadable message.'; }
+    };
+    connection.getReadyState({success: result => {
+      if (!current() || challenge) return;
+      this.linkDetails = result.status === 1 ? 'Band link ready. Waiting for the phone app handshake.' : 'Band link disconnected (state ' + result.status + ').';
+    }, fail: (error, code) => { if (current() && !challenge) this.linkDetails = this.connectionError('State', error, code); }});
+    this.hello();
+    if (diagnose && typeof connection.diagnosis === 'function') {
+      try { connection.diagnosis({timeout: 10000, success: result => {
+        if (!current() || challenge) return;
+        const reasons = {0: 'Link ready; phone app has not replied.', 204: 'Connection timed out. Keep Notify and the phone app open.', 1001: 'Phone companion not found by the band. Open Pickleball on the phone.', 1000: 'Connection failed. Check the phone connection details.'};
+        this.linkDetails = 'Diagnosis ' + result.status + ': ' + (reasons[result.status] || 'Unknown connection result.');
+      }, fail: (error, code) => { if (current() && !challenge) this.linkDetails = this.connectionError('Diagnosis', error, code); }}); }
+      catch (error) { if (!challenge) this.linkDetails = 'Diagnosis unavailable. ' + String(error); }
+    }
+  },
+  connectionError(source, error, code) {
+    const detail = error && typeof error === 'object' ? error : {};
+    const number = code === undefined ? detail.code : code;
+    const message = detail.data || detail.message || (typeof error === 'string' ? error : 'No details');
+    return source + (number === undefined ? '' : ' ' + number) + ': ' + String(message).slice(0, 160);
+  },
   render() {
     const s = game.state;
     this.hasGame = true; this.us = s.scores[0]; this.them = s.scores[1];
@@ -117,7 +185,14 @@ export default {
     this.notice = won !== -1 ? 'Game over - Undo or New' : (s.mode === 'doubles' ? 'Doubles' : 'Singles') + ' / to ' + s.target;
   },
   hello() {
-    connection.send({data: {type: 'hello'}, fail: () => { this.phoneStatus = 'Phone offline'; }});
+    if (!connection || !alive) return;
+    const generation = linkGeneration;
+    connection.send({data: {type: 'hello'}, fail: (error, code) => {
+      if (!alive || generation !== linkGeneration || challenge) return;
+      this.phoneStatus = 'Phone offline';
+      // Preserve an explicit diagnosis instead of replacing it on every retry.
+      if (this.linkDetails.indexOf('Diagnosis ') !== 0) this.linkDetails = this.connectionError('Send', error, code);
+    }});
   },
   send(action) {
     if (!challenge) { this.phoneStatus = 'Phone offline - score saved'; this.hello(); return; }
@@ -184,6 +259,13 @@ export default {
 .button { width: 192px; height: 45px; background-color: #20382c; border-radius: 12px; margin-bottom: 7px; align-items: center; justify-content: center; }
 .buttonText { color: #ffffff; font-size: 17px; text-align: center; }
 .half { width: 93px; }
+.third { width: 61px; }
+.compactText { color: #ffffff; font-size: 13px; text-align: center; }
+.newTitle { width: 125px; height: 28px; font-size: 16px; color: #baf75e; }
+.connectLink { width: 61px; height: 28px; font-size: 13px; color: #baf75e; text-align: center; }
+.linkStatus { width: 192px; height: 44px; font-size: 17px; color: #baf75e; text-align: center; }
+.linkDetails { width: 192px; height: 115px; font-size: 15px; color: #ffffff; }
+.linkHelp { width: 192px; height: 76px; font-size: 13px; color: #a4b7ac; }
 .primary { background-color: #baf75e; }
 .primaryText { color: #10240a; font-size: 17px; text-align: center; }
 .secondary { background-color: #316946; }
