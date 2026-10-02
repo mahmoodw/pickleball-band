@@ -1,0 +1,194 @@
+<template>
+  <div class="page">
+    <div if="{{screen === 'loading'}}" class="panel">
+      <text class="title">Pickleball</text>
+      <text class="hint">Loading game...</text>
+    </div>
+    <div if="{{screen === 'game'}}" class="panel">
+      <text class="title">PICKLEBALL</text>
+      <div class="row labels"><text class="half">US</text><text class="half">THEM</text></div>
+      <div class="row scores"><text class="half score">{{us}}</text><text class="half score">{{them}}</text></div>
+      <text class="call">{{scoreCall}}</text>
+      <text class="hint">{{serveLabel}}</text>
+      <text class="status">{{phoneStatus}}</text>
+      <div class="button primary" onclick="weWon"><text class="primaryText">We won rally</text></div>
+      <div class="button secondary" onclick="theyWon"><text class="buttonText">They won rally</text></div>
+      <div class="row">
+        <div class="button half small" onclick="undo"><text class="buttonText">Undo</text></div>
+        <div class="button half small" onclick="repeat"><text class="buttonText">Speak</text></div>
+      </div>
+      <div class="row">
+        <div class="button half small" onclick="edit"><text class="buttonText">Correct</text></div>
+        <div class="button half small" onclick="settings"><text class="buttonText">New</text></div>
+      </div>
+      <text class="foot">{{notice}}</text>
+    </div>
+    <div if="{{screen === 'edit'}}" class="panel">
+      <text class="title">CORRECT SCORE</text>
+      <text class="hint">Change, then save</text>
+      <text class="hint">Our points: {{editUs}}</text>
+      <div class="row"><div class="button half" onclick="usMinus"><text class="buttonText">-</text></div><div class="button half" onclick="usPlus"><text class="buttonText">+</text></div></div>
+      <text class="hint">Their points: {{editThem}}</text>
+      <div class="row"><div class="button half" onclick="themMinus"><text class="buttonText">-</text></div><div class="button half" onclick="themPlus"><text class="buttonText">+</text></div></div>
+      <div class="button" onclick="switchServing"><text class="buttonText">Serving: {{editServing}}</text></div>
+      <div if="{{isDoubles}}" class="button" onclick="switchServer"><text class="buttonText">Server: {{editServer}}</text></div>
+      <div class="button primary" onclick="saveEdit"><text class="primaryText">Save &amp; speak</text></div>
+      <div class="button" onclick="back"><text class="buttonText">Cancel</text></div>
+    </div>
+    <div if="{{screen === 'new'}}" class="panel">
+      <text class="title">NEW GAME</text>
+      <text class="hint">Traditional scoring</text>
+      <div class="button" onclick="toggleMode"><text class="buttonText">{{newMode}}</text></div>
+      <div class="button" onclick="toggleFirst"><text class="buttonText">First serve: {{newFirst}}</text></div>
+      <div class="button" onclick="toggleTarget"><text class="buttonText">Play to {{newTarget}}</text></div>
+      <text class="hint">Win by two</text>
+      <text class="warning">{{newWarning}}</text>
+      <div class="button primary" onclick="startGame"><text class="primaryText">Start game</text></div>
+      <div if="{{hasGame}}" class="button" onclick="back"><text class="buttonText">Cancel</text></div>
+    </div>
+  </div>
+</template>
+<script>
+import storage from '@system.storage';
+import interconnect from '@system.interconnect';
+import vibrator from '@system.vibrator';
+const rules = require('../../common/scoring');
+let game, draft, connection, heartbeat, ackTimer, session, sequence, challenge;
+let busy = false;
+export default {
+  private: {
+    screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '',
+    phoneStatus: 'Phone offline', notice: '', editUs: 0, editThem: 0,
+    editServing: 'Us', editServer: 2, isDoubles: true,
+    newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: ''
+  },
+  onInit() {
+    game = null; busy = false; sequence = 0; challenge = '';
+    session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    try { connection = interconnect.instance(); }
+    catch (_) {
+      connection = {send: args => { if (args.fail) args.fail(); }, getReadyState: args => args.success({status: 2})};
+    }
+    connection.onopen = () => { challenge = ''; this.hello(); };
+    connection.onclose = () => { challenge = ''; this.phoneStatus = 'Phone offline'; };
+    connection.onerror = () => { challenge = ''; this.phoneStatus = 'Phone offline'; };
+    connection.onmessage = event => {
+      try {
+        const raw = event.data;
+        const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (msg.type === 'hello' && typeof msg.challenge === 'string') {
+          challenge = msg.challenge;
+          this.phoneStatus = 'Phone connected';
+          if (game) this.send('sync');
+        } else if (msg.type === 'ack' && msg.session === session && msg.sequence === sequence) {
+          clearTimeout(ackTimer);
+          if (msg.status === 'spoken') this.phoneStatus = 'Score spoken';
+          else if (msg.status === 'speaking') {
+            this.phoneStatus = 'Phone speaking...';
+            ackTimer = setTimeout(() => { this.phoneStatus = 'Speech not confirmed'; }, 15000);
+          }
+          else if (msg.status === 'synced') this.phoneStatus = 'Phone connected';
+          else this.phoneStatus = 'Speech unavailable';
+        }
+      } catch (_) { this.phoneStatus = 'Connection error'; }
+    };
+    heartbeat = setInterval(() => {
+      connection.getReadyState({success: r => {
+        if (r.status !== 1) { challenge = ''; this.phoneStatus = 'Phone offline'; }
+        else if (!challenge) this.hello();
+      }, fail: () => { challenge = ''; this.phoneStatus = 'Phone offline'; }});
+    }, 8000);
+    storage.get({key: 'pickleball.game.v1', default: '', success: value => {
+      if (value) {
+        try { game = rules.restore(value); this.render(); this.screen = 'game'; }
+        catch (_) { this.newWarning = 'Saved game unreadable. Start a new game to replace it.'; this.screen = 'new'; }
+      } else { this.screen = 'new'; }
+      this.hello();
+    }, fail: () => { this.newWarning = 'Could not read saved game.'; this.screen = 'new'; this.hello(); }});
+  },
+  onDestroy() { clearInterval(heartbeat); clearTimeout(ackTimer); connection.onmessage = null; connection.onopen = null; connection.onclose = null; connection.onerror = null; },
+  render() {
+    const s = game.state;
+    this.hasGame = true; this.us = s.scores[0]; this.them = s.scores[1];
+    this.scoreCall = rules.call(s); this.isDoubles = s.mode === 'doubles';
+    const won = rules.winner(s);
+    this.serveLabel = won !== -1 ? (won === 0 ? 'We win!' : 'They win!') :
+      (s.serving === 0 ? 'We serve' : 'They serve') + (this.isDoubles ? ' / server ' + s.server : '');
+    this.notice = won !== -1 ? 'Game over - Undo or New' : (s.mode === 'doubles' ? 'Doubles' : 'Singles') + ' / to ' + s.target;
+  },
+  hello() {
+    connection.send({data: {type: 'hello'}, fail: () => { this.phoneStatus = 'Phone offline'; }});
+  },
+  send(action) {
+    if (!challenge) { this.phoneStatus = 'Phone offline - score saved'; this.hello(); return; }
+    sequence++;
+    const p = rules.packet(game, action, sequence, session);
+    p.challenge = challenge;
+    const sent = sequence;
+    this.phoneStatus = action === 'sync' ? 'Connecting...' : 'Sending score...';
+    clearTimeout(ackTimer);
+    ackTimer = setTimeout(() => { if (sent === sequence) { challenge = ''; this.phoneStatus = 'Phone not responding'; } }, 7000);
+    connection.send({data: p, fail: () => {
+      if (sent !== sequence) return;
+      clearTimeout(ackTimer); challenge = ''; this.phoneStatus = 'Phone offline - score saved';
+    }});
+  },
+  save(next, action) {
+    if (busy || next === game) return;
+    busy = true;
+    storage.set({key: 'pickleball.game.v1', value: JSON.stringify(next), success: () => {
+      game = next; busy = false; this.screen = 'game'; this.render();
+      try { vibrator.vibrate({mode: 'short'}); } catch (_) {}
+      this.send(action);
+    }, fail: () => { busy = false; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
+  },
+  weWon() { if (game) this.save(rules.rally(game, 0), 'rally'); },
+  theyWon() { if (game) this.save(rules.rally(game, 1), 'rally'); },
+  undo() { if (game) { if (!game.history.length) { this.notice = 'Nothing to undo'; return; } this.save(rules.undo(game), 'undo'); } },
+  repeat() { if (game && !busy) this.send('repeat'); },
+  edit() {
+    if (!game || busy) return;
+    draft = JSON.parse(JSON.stringify(game.state)); this.editUs = draft.scores[0]; this.editThem = draft.scores[1];
+    this.editServing = draft.serving === 0 ? 'Us' : 'Them'; this.editServer = draft.server; this.screen = 'edit';
+  },
+  usMinus() { this.editUs = Math.max(0, this.editUs - 1); },
+  usPlus() { this.editUs = Math.min(99, this.editUs + 1); },
+  themMinus() { this.editThem = Math.max(0, this.editThem - 1); },
+  themPlus() { this.editThem = Math.min(99, this.editThem + 1); },
+  switchServing() { this.editServing = this.editServing === 'Us' ? 'Them' : 'Us'; },
+  switchServer() { this.editServer = this.editServer === 1 ? 2 : 1; },
+  saveEdit() {
+    draft.scores = [this.editUs, this.editThem]; draft.serving = this.editServing === 'Us' ? 0 : 1;
+    draft.server = this.editServer; this.save(rules.correct(game, draft), 'correct');
+  },
+  settings() { if (!busy) { this.newWarning = 'Starting replaces this game and its undo history.'; this.screen = 'new'; } },
+  toggleMode() { this.newMode = this.newMode === 'Doubles' ? 'Singles' : 'Doubles'; },
+  toggleFirst() { this.newFirst = this.newFirst === 'Us' ? 'Them' : 'Us'; },
+  toggleTarget() { this.newTarget = this.newTarget === 11 ? 15 : this.newTarget === 15 ? 21 : 11; },
+  startGame() { this.save(rules.create(this.newMode.toLowerCase(), this.newFirst === 'Us' ? 0 : 1, this.newTarget), 'start'); },
+  back() { if (!busy) this.screen = 'game'; }
+};
+</script>
+<style>
+.page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; padding: 18px 10px 18px 10px; }
+.panel { width: 192px; flex-direction: column; align-items: center; }
+.title { font-size: 16px; color: #baf75e; text-align: center; height: 28px; }
+.row { width: 192px; flex-direction: row; justify-content: space-between; }
+.half { width: 93px; text-align: center; }
+.labels { height: 20px; color: #a4b7ac; font-size: 13px; }
+.scores { height: 64px; }
+.score { font-size: 48px; color: #ffffff; }
+.call { font-size: 27px; color: #baf75e; height: 40px; text-align: center; }
+.hint { font-size: 14px; color: #c0d3c6; text-align: center; height: 27px; }
+.status { font-size: 11px; color: #8cbbb0; height: 29px; text-align: center; }
+.button { width: 192px; height: 45px; background-color: #20382c; border-radius: 12px; margin-bottom: 7px; align-items: center; justify-content: center; }
+.buttonText { color: #ffffff; font-size: 17px; text-align: center; }
+.half { width: 93px; }
+.primary { background-color: #baf75e; }
+.primaryText { color: #10240a; font-size: 17px; text-align: center; }
+.secondary { background-color: #316946; }
+.small { height: 40px; }
+
+.foot { font-size: 11px; color: #a4b7ac; height: 22px; text-align: center; }
+.warning { font-size: 13px; color: #e1c589; height: 67px; text-align: center; }
+</style>
