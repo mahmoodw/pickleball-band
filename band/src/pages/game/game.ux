@@ -4,7 +4,9 @@
       <text class="title">Pickleball</text>
       <text class="hint">Loading game...</text>
     </div>
-    <div if="{{screen === 'game'}}" class="panel gamePanel">
+    <swiper if="{{screen === 'game'}}" id="gamePages" class="gamePages" index="{{pageIndex}}" loop="false" indicator="false" onchange="pageChanged" ontouchstart="pageTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd">
+    <div class="slide">
+    <div class="panel gamePanel">
       <div class="row scoreLabels"><text class="teamLabel">US</text><text class="teamLabel">THEM</text></div>
       <div class="row scores"><text class="score">{{us}}</text><text class="score">{{them}}</text></div>
       <text class="serve">{{serveLabel}}</text>
@@ -20,12 +22,34 @@
         <div class="smallButton third" onclick="repeat"><text class="smallText">Speak</text></div>
         <div class="smallButton third" onclick="more"><text class="smallText">More</text></div>
       </div>
-      <text class="foot">{{notice}}</text>
+      <text class="gameFoot">{{notice}}</text>
+      <text class="pageHint">Swipe left for music</text>
     </div>
+    </div>
+    <div class="slide">
+    <div class="panel">
+      <text class="title">Music</text>
+      <text class="musicStatus">{{musicStatus}}</text>
+      <div class="musicPlay primary" onclick="musicToggle"><text class="musicPlayText">Play / Pause</text></div>
+      <div class="row musicRow">
+        <div class="musicTrack" onclick="musicPrevious"><text class="smallText">Previous</text></div>
+        <div class="musicTrack" onclick="musicNext"><text class="smallText">Next</text></div>
+      </div>
+      <text class="volumeLabel">Phone media volume</text>
+      <div class="row volumeRow">
+        <div class="smallButton half" onclick="musicQuieter"><text class="stepText">−</text></div>
+        <div class="smallButton half" onclick="musicLouder"><text class="stepText">+</text></div>
+      </div>
+      <div class="smallButton wide" onclick="showScore"><text class="smallText">Back to score</text></div>
+      <text class="musicHint">Swipe right for score</text>
+    </div>
+    </div>
+    </swiper>
     <div if="{{screen === 'more'}}" class="panel">
       <text class="title">Game options</text>
       <text class="menuCall">{{scoreCall}}</text>
       <div class="button" onclick="edit"><text class="buttonText">Correct score</text></div>
+      <div class="button" onclick="showMusic"><text class="buttonText">Music controls</text></div>
       <div class="button" onclick="connectionSettings"><text class="buttonText">Phone connection</text></div>
       <div class="button" onclick="settings"><text class="buttonText">New game</text></div>
       <div class="button" onclick="back"><text class="buttonText">Back to game</text></div>
@@ -87,15 +111,18 @@ const rules = require('../../common/scoring');
 let game, draft, connection, heartbeat, ackTimer, session, sequence, challenge;
 let linkGeneration = 0, alive = false;
 let busy = false;
+let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUntil = 0;
 export default {
   private: {
     screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '',
     phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', notice: '', editUs: 0, editThem: 0,
     editServing: 'Us', editServer: 2, isDoubles: true,
-    newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: ''
+    newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: '',
+    pageIndex: 0, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false
   },
   onInit() {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
+    mediaSequence = 0; dragged = false; ignoreTapUntil = 0;
     session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     this.refreshConnection(false);
     storage.get({key: 'pickleball.game.v1', default: '', success: value => {
@@ -116,7 +143,7 @@ export default {
   onHide() { clearInterval(heartbeat); },
   onDestroy() {
     alive = false; ++linkGeneration;
-    clearInterval(heartbeat); clearTimeout(ackTimer);
+    clearInterval(heartbeat); clearTimeout(ackTimer); clearTimeout(mediaTimer);
     this.unbindConnection();
   },
   unbindConnection() {
@@ -125,6 +152,7 @@ export default {
     connection.onclose = null; connection.onerror = null;
   },
   connectionSettings() {
+    if (this.screen === 'game' && !this.canTap()) return;
     this.connectionReturn = this.screen;
     this.screen = 'connection';
     this.reconnect();
@@ -136,6 +164,7 @@ export default {
     // handshake; never replace the saved game to refresh communication.
     const generation = ++linkGeneration;
     challenge = ''; clearTimeout(ackTimer);
+    this.resetMusic('Connecting to phone...');
     this.unbindConnection(); connection = null;
     this.phoneStatus = 'Connecting...';
     this.linkDetails = 'Waiting for the phone app. Keep Notify and the announcer running.';
@@ -146,11 +175,13 @@ export default {
     connection.onclose = event => {
       if (!current()) return;
       challenge = ''; clearTimeout(ackTimer);
+      this.resetMusic('Phone offline');
       this.phoneStatus = 'Phone offline'; this.linkDetails = this.connectionError('Closed', event);
     };
     connection.onerror = event => {
       if (!current()) return;
       challenge = ''; clearTimeout(ackTimer);
+      this.resetMusic('Phone connection error');
       this.phoneStatus = 'Connection error'; this.linkDetails = this.connectionError('Link', event);
     };
     connection.onmessage = event => {
@@ -161,9 +192,14 @@ export default {
         if (msg.type === 'hello' && typeof msg.challenge === 'string') {
           clearTimeout(ackTimer);
           challenge = msg.challenge;
+          this.resetMusic(msg.mediaVersion === 1 ? 'Start music on your phone' : 'Update phone app for music');
+          this.mediaAvailable = msg.mediaVersion === 1;
           this.phoneStatus = 'Phone connected';
           this.linkDetails = 'Phone handshake received.';
           if (game) this.send('sync');
+        } else if (msg.type === 'mediaAck' && msg.session === session && msg.sequence === mediaSequence && this.musicBusy) {
+          clearTimeout(mediaTimer); this.musicBusy = false;
+          this.musicStatus = typeof msg.message === 'string' ? msg.message.slice(0, 60) : 'Music control unavailable';
         } else if (msg.type === 'ack' && msg.session === session && msg.sequence === sequence) {
           clearTimeout(ackTimer);
           if (msg.status === 'spoken') this.phoneStatus = 'Score spoken';
@@ -189,6 +225,47 @@ export default {
       }, fail: (error, code) => { if (current() && !challenge) this.linkDetails = this.connectionError('Diagnosis', error, code); }}); }
       catch (error) { if (!challenge) this.linkDetails = 'Diagnosis unavailable. ' + String(error); }
     }
+  },
+  resetMusic(message) {
+    clearTimeout(mediaTimer); this.musicBusy = false; this.mediaAvailable = false; this.musicStatus = message;
+  },
+  pageTouchStart(event) {
+    const touch = event.touches && event.touches[0];
+    touchX = touch ? touch.clientX : undefined; touchY = touch ? touch.clientY : undefined; dragged = false;
+  },
+  pageTouchMove(event) {
+    const touch = event.touches && event.touches[0];
+    if (touch && touchX !== undefined && (Math.abs(touch.clientX - touchX) > 12 || Math.abs(touch.clientY - touchY) > 12)) dragged = true;
+  },
+  pageTouchEnd() { if (dragged) ignoreTapUntil = Date.now() + 350; },
+  canTap() { return !dragged && Date.now() >= ignoreTapUntil; },
+  canScoreTap() { return this.pageIndex === 0 && this.canTap(); },
+  pageChanged(event) { this.pageIndex = event.index === 1 ? 1 : 0; ignoreTapUntil = Date.now() + 350; },
+  showMusic() { if (!busy) { this.pageIndex = 1; this.screen = 'game'; } },
+  showScore() {
+    if (!this.canTap()) return;
+    this.pageIndex = 0;
+    this.$element('gamePages').swipeTo({index: 0});
+  },
+  musicToggle() { this.sendMusic('toggle'); },
+  musicPrevious() { this.sendMusic('previous'); },
+  musicNext() { this.sendMusic('next'); },
+  musicQuieter() { this.sendMusic('volumeDown'); },
+  musicLouder() { this.sendMusic('volumeUp'); },
+  sendMusic(action) {
+    if (!this.canTap() || this.musicBusy || busy) return;
+    if (!challenge) { this.musicStatus = 'Phone offline - reconnect'; this.hello(); return; }
+    if (!this.mediaAvailable) { this.musicStatus = 'Update phone app for music'; return; }
+    const sent = ++mediaSequence, generation = linkGeneration;
+    this.musicBusy = true; this.musicStatus = 'Sending control...';
+    mediaTimer = setTimeout(() => {
+      if (!alive || generation !== linkGeneration || sent !== mediaSequence) return;
+      this.musicBusy = false; this.musicStatus = 'No reply - check phone';
+    }, 7000);
+    connection.send({data: {type: 'media', version: 1, session, sequence: sent, challenge, action}, fail: () => {
+      if (!alive || generation !== linkGeneration || sent !== mediaSequence || !this.musicBusy) return;
+      clearTimeout(mediaTimer); this.musicBusy = false; this.musicStatus = 'Control failed - check phone';
+    }});
   },
   connectionError(source, error, code) {
     const detail = error && typeof error === 'object' ? error : {};
@@ -238,10 +315,10 @@ export default {
       this.send(action);
     }, fail: () => { busy = false; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
   },
-  weWon() { if (game) this.save(rules.rally(game, 0), 'rally'); },
-  theyWon() { if (game) this.save(rules.rally(game, 1), 'rally'); },
-  undo() { if (game) { if (!game.history.length) { this.notice = 'Nothing to undo'; return; } this.save(rules.undo(game), 'undo'); } },
-  repeat() { if (game && !busy) this.send('repeat'); },
+  weWon() { if (game && this.canScoreTap()) this.save(rules.rally(game, 0), 'rally'); },
+  theyWon() { if (game && this.canScoreTap()) this.save(rules.rally(game, 1), 'rally'); },
+  undo() { if (game && this.canScoreTap()) { if (!game.history.length) { this.notice = 'Nothing to undo'; return; } this.save(rules.undo(game), 'undo'); } },
+  repeat() { if (game && !busy && this.canScoreTap()) this.send('repeat'); },
   edit() {
     if (!game || busy) return;
     draft = JSON.parse(JSON.stringify(game.state)); this.editUs = draft.scores[0]; this.editThem = draft.scores[1];
@@ -257,13 +334,13 @@ export default {
     draft.scores = [this.editUs, this.editThem]; draft.serving = this.editServing === 'Us' ? 0 : 1;
     draft.server = this.editServer; this.save(rules.correct(game, draft), 'correct');
   },
-  more() { if (!busy) this.screen = 'more'; },
+  more() { if (!busy && this.canTap()) this.screen = 'more'; },
   settings() { if (!busy) { this.newWarning = 'Replaces this game and its undo history.'; this.screen = 'new'; } },
   toggleMode() { this.newMode = this.newMode === 'Doubles' ? 'Singles' : 'Doubles'; },
   toggleFirst() { this.newFirst = this.newFirst === 'Us' ? 'Them' : 'Us'; },
   toggleTarget() { this.newTarget = this.newTarget === 11 ? 15 : this.newTarget === 15 ? 21 : 11; },
   startGame() { this.save(rules.create(this.newMode.toLowerCase(), this.newFirst === 'Us' ? 0 : 1, this.newTarget), 'start'); },
-  back() { if (!busy) this.screen = 'game'; }
+  back() { if (!busy) { this.pageIndex = 0; this.screen = 'game'; } }
 };
 </script>
 <style>
@@ -271,6 +348,18 @@ export default {
    rounded display ends. Game content fits without scrolling or shrinking. */
 .page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; align-items: center; justify-content: center; }
 .panel { width: 180px; height: 448px; flex-direction: column; align-items: center; justify-content: center; }
+.gamePages { width: 212px; height: 520px; }
+.slide { width: 212px; height: 520px; flex-direction: column; align-items: center; justify-content: center; }
+.gameFoot { width: 160px; height: 32px; font-size: 12px; line-height: 16px; color: #a4b7ac; text-align: center; lines: 2; }
+.pageHint { width: 150px; height: 16px; font-size: 10px; line-height: 14px; color: #a4b7ac; text-align: center; lines: 1; }
+.musicStatus { width: 172px; height: 44px; font-size: 15px; line-height: 20px; color: #a4d7bf; text-align: center; lines: 2; }
+.musicPlay { width: 180px; height: 80px; margin-bottom: 8px; border-radius: 18px; align-items: center; justify-content: center; }
+.musicPlayText { width: 164px; font-size: 22px; line-height: 28px; color: #10240a; text-align: center; lines: 1; }
+.musicRow { height: 56px; margin-bottom: 8px; }
+.musicTrack { width: 86px; height: 56px; background-color: #285e4b; border-radius: 14px; align-items: center; justify-content: center; }
+.volumeLabel { width: 172px; height: 22px; font-size: 13px; line-height: 18px; color: #a4b7ac; text-align: center; lines: 1; }
+.volumeRow { height: 48px; margin-bottom: 8px; }
+.musicHint { width: 150px; height: 24px; font-size: 11px; line-height: 20px; color: #a4b7ac; text-align: center; lines: 1; }
 .row { width: 180px; flex-direction: row; align-items: center; justify-content: space-between; }
 .title { width: 160px; height: 30px; font-size: 20px; line-height: 26px; color: #baf75e; text-align: center; lines: 1; }
 .hint { width: 180px; height: 26px; font-size: 13px; line-height: 18px; color: #a4b7ac; text-align: center; lines: 1; }

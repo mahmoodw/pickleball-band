@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const rules = require('../band/src/common/scoring');
 function harness(saved = '', failWrite = false) {
+  let now = 1000;
   const sent = [], requests = [], writes = [], diagnoses = [], timers = new Map(), intervals = new Map(); let timerId = 0;
   const makeConnection = () => ({
     send: args => { sent.push(args.data); requests.push(args); },
@@ -14,6 +15,7 @@ function harness(saved = '', failWrite = false) {
     storage: {get: args => args.success(saved), set: args => { writes.push(args.value); failWrite ? args.fail() : args.success(); }},
     interconnect: {instance: () => { instanceCalls++; return activeConnection; }}, vibrator: {vibrate: () => {}},
     require: () => rules, setInterval: f => { intervals.set(++timerId,f); return timerId; }, clearInterval: id => intervals.delete(id),
+    Date: class extends Date { static now() { return now; } },
     setTimeout: f => { timers.set(++timerId,f); return timerId; }, clearTimeout: id => timers.delete(id),
     result: null
   };
@@ -22,10 +24,11 @@ function harness(saved = '', failWrite = false) {
   vm.runInNewContext(script,context);
   const page = context.result;
   Object.assign(page,JSON.parse(JSON.stringify(page.private)));
+  page.$element = () => ({swipeTo: ({index}) => page.pageChanged({index})});
   page.onInit();
-  const hello = () => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge'})});
+  const hello = (mediaVersion = 1) => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge',mediaVersion})});
   return {page,conn,sent,requests,writes,hello,timers,intervals,diagnoses,makeConnection,
-    replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls};
+    replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls, advance: ms => { now += ms; }};
 }
 test('band persists before broadcasting, correction is one atomic update', () => {
   const h=harness(); h.page.startGame(); h.hello();
@@ -148,4 +151,63 @@ test('secondary controls remain reachable through More without changing the game
   h.page.back(); assert.equal(h.page.screen,'game');
   assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
   assert.equal(h.writes.at(-1),saved);
+});
+test('music controls and their acknowledgments do not mutate or acknowledge the score', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  h.page.weWon(); const score=h.sent.at(-1), writes=h.writes.length;
+  h.page.showMusic(); h.page.musicToggle(); const music=h.sent.at(-1);
+  assert.equal(music.type,'media'); assert.equal(music.action,'toggle');
+  assert.equal(music.challenge,'test-challenge');
+  assert.equal(h.page.musicBusy,true); const count=h.sent.length;
+  h.page.musicToggle(); assert.equal(h.sent.length,count);
+  h.conn.onmessage({data:{type:'mediaAck',session:music.session,sequence:music.sequence,status:'sent',message:'Play / pause sent'}});
+  assert.equal(h.page.musicBusy,false); assert.equal(h.page.musicStatus,'Play / pause sent');
+  assert.equal(h.page.phoneStatus,'Sending score...');
+  h.conn.onmessage({data:{type:'ack',session:score.session,sequence:score.sequence,status:'spoken'}});
+  assert.equal(h.page.phoneStatus,'Score spoken');
+  h.page.showScore(); assert.equal(h.page.pageIndex,0);
+  assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
+});
+test('swiping across a rally button cannot score, undo or speak', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  const count=h.sent.length;
+  h.page.pageTouchStart({touches:[{clientX:150,clientY:200}]});
+  h.page.pageTouchMove({touches:[{clientX:60,clientY:202}]});
+  h.page.pageTouchEnd();
+  h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
+  assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
+  h.page.pageChanged({index:1}); h.advance(400);
+  h.page.pageTouchStart({touches:[{clientX:90,clientY:200}]});
+  h.page.weWon(); assert.equal(h.writes.length,0);
+  h.page.showScore(); h.advance(400);
+  h.page.pageTouchStart({touches:[{clientX:90,clientY:200}]});
+  h.page.weWon(); assert.equal(h.page.us,1);
+});
+test('music is never queued offline or retried after timeout, and old phones get an upgrade hint', () => {
+  const h=harness(JSON.stringify(rules.create())); h.page.showMusic(); h.page.musicNext();
+  assert.ok(h.sent.every(p=>p.type==='hello'));
+  h.hello(0); h.page.musicNext();
+  assert.equal(h.page.musicStatus,'Update phone app for music');
+  assert.ok(h.sent.every(p=>p.type!=='media'));
+  h.hello(); h.page.musicNext();
+  assert.equal(h.sent.at(-1).action,'next');
+  const count=h.sent.length;
+  for(const f of [...h.timers.values()]) f();
+  assert.equal(h.page.musicBusy,false); assert.equal(h.page.musicStatus,'No reply - check phone');
+  assert.equal(h.sent.length,count);
+  h.page.onShow(); h.hello();
+  assert.equal(h.sent.at(-1).action,'sync');
+  assert.equal(h.sent.filter(p=>p.type==='media').length,1);
+});
+test('late music replies and send failures cannot replace a newer command result', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.showMusic(); h.page.musicPrevious();
+  const old=h.sent.at(-1), oldSend=h.requests.at(-1);
+  const ack=(packet,message)=>h.conn.onmessage({data:{type:'mediaAck',session:packet.session,sequence:packet.sequence,status:'sent',message}});
+  ack(old,'Previous track sent'); h.page.musicLouder(); const next=h.sent.at(-1);
+  assert.equal(next.action,'volumeUp');
+  ack(old,'Old reply'); oldSend.fail();
+  assert.equal(h.page.musicStatus,'Sending control...');
+  ack(next,'Volume 5 / 15'); assert.equal(h.page.musicStatus,'Volume 5 / 15');
+  h.page.musicQuieter(); assert.equal(h.sent.at(-1).action,'volumeDown');
+  h.page.onDestroy(); assert.equal(h.timers.size,0);
 });

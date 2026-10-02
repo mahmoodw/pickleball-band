@@ -5,6 +5,7 @@ import android.content.*;
 import android.media.*;
 import android.os.*;
 import android.speech.tts.*;
+import android.view.KeyEvent;
 import com.xiaomi.xms.wearable.Wearable;
 import com.xiaomi.xms.wearable.node.Node;
 import com.xiaomi.xms.wearable.message.MessageApi;
@@ -26,6 +27,7 @@ public class AnnouncerService extends Service {
     // means we have no route; never use String.isEmpty() to test attachment.
     private String node = null, challenge = "", activeUtterance = "";
     private final MessageOrder order = new MessageOrder();
+    private final MediaRemote media = new MediaRemote();
     private long queryStarted, attachingStarted, sendAttempt;
     private Score activeScore;
     private AudioManager audio;
@@ -123,7 +125,7 @@ public class AnnouncerService extends Service {
         messages.addListener(id, (from, bytes) -> main.post(() -> receive(from, bytes)))
             .addOnSuccessListener(value -> main.post(() -> {
                 if (destroyed || !id.equals(node)) return;
-                attaching = false; registered = true; challenge = UUID.randomUUID().toString(); order.reset();
+                attaching = false; registered = true; challenge = UUID.randomUUID().toString(); order.reset(); media.reset();
                 status("Notify listener ready. Waiting for Pickleball on your band."); hello();
             })).addOnFailureListener(error -> main.post(() -> {
                 if (!id.equals(node)) return;
@@ -137,7 +139,7 @@ public class AnnouncerService extends Service {
         ++sendAttempt;
     }
     private void hello() {
-        try { send(new JSONObject().put("type", "hello").put("challenge", challenge)); } catch (Exception ignored) {}
+        try { send(new JSONObject().put("type", "hello").put("challenge", challenge).put("mediaVersion", 1)); } catch (Exception ignored) {}
     }
     private void receive(String from, byte[] bytes) {
         if (destroyed || node == null || !node.equals(from) || bytes == null || bytes.length > 8192) return;
@@ -145,11 +147,19 @@ public class AnnouncerService extends Service {
             JSONObject p = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
             getSharedPreferences(PREFS,0).edit().putBoolean("bandReceived",true).apply();
             if ("hello".equals(p.optString("type"))) {
-                challenge = UUID.randomUUID().toString(); order.reset();
+                challenge = UUID.randomUUID().toString(); order.reset(); media.reset();
                 status("Band app reached the phone. Waiting for score sync...");
                 hello(); return;
             }
             if (challenge.isEmpty() || !challenge.equals(p.optString("challenge"))) { hello(); return; }
+            if ("media".equals(p.optString("type"))) {
+                JSONObject reply = media.receive(p, this::controlMedia);
+                if (reply != null) {
+                    getSharedPreferences(PREFS,0).edit().putString("media",reply.optString("message")).apply();
+                    send(reply);
+                }
+                return;
+            }
             Score score = new Score(p);
             if (!order.accept(score)) return;
             String details = "Us " + score.us + "   |   Them " + score.them + "\n" +
@@ -157,11 +167,28 @@ public class AnnouncerService extends Service {
             getSharedPreferences(PREFS, 0).edit().putString("score", score.call()).putString("details", details).apply();
             status("Band app connected");
             if (score.action.equals("sync")) {
+                media.sync(score.session);
                 if (activeScore != null && (!activeScore.gameId.equals(score.gameId) || activeScore.revision != score.revision)) cancelSpeech();
                 ack(score, "synced"); return;
             }
             speak(score.speech(), score);
         } catch (Exception error) { status("Invalid band message: " + error.getMessage()); }
+    }
+    private String controlMedia(String action) {
+        if (audio == null) throw new IllegalStateException("Audio unavailable");
+        if (action.equals("volumeUp") || action.equals("volumeDown")) {
+            if (audio.isVolumeFixed()) return "Volume fixed on phone";
+            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                action.equals("volumeUp") ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER, 0);
+            return "Volume " + audio.getStreamVolume(AudioManager.STREAM_MUSIC) + " / " + audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        }
+        int key = action.equals("next") ? KeyEvent.KEYCODE_MEDIA_NEXT :
+            action.equals("previous") ? KeyEvent.KEYCODE_MEDIA_PREVIOUS : KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+        long now = SystemClock.uptimeMillis();
+        audio.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0));
+        audio.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_UP, key, 0));
+        // Android does not confirm the player's response to media key events.
+        return action.equals("next") ? "Next track sent" : action.equals("previous") ? "Previous track sent" : "Play / pause sent";
     }
     private void speak(String text, Score score) {
         cancelSpeech();

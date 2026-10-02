@@ -2,17 +2,28 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. For this layout update, install the v0.1.4 band RPK. Your working v0.1.3 phone APK remains compatible.
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Install both v0.1.5 packages for music controls.**
 
-**Device status:** the user reports the Notify connection and announcements working after the v0.1.3 phone fix. Version **0.1.4 improves the band layout for its 212 × 520 screen**. The new layout has been checked in a browser approximation and built with the Vela toolkit; physical-device layout and longer screen-locked sessions still need testing.
+**Device status:** the user reports the Notify connection, announcements and v0.1.4 band layout working. Version **0.1.5 adds a swipe-accessible music page**. The new layout has passed a browser approximation and both packages build successfully; swipe behavior and music-player responses still need checking on a physical Band 10 and Android phone.
 
 The band keeps the game and undo history locally. The phone receives score snapshots and speaks using an offline English Android voice. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.4
+## Upgrade to v0.1.5
 
-Update the band app through Notify using `pickleball-band-0.1.4.rpk`. **Keep your working v0.1.3 phone APK**; updating Android is optional for this UI release. The v0.1.4 APK is included for new installations. Both apps keep their package name and signing key, and the band keeps the saved-game format and communication protocol. Update the RPK in place; uninstalling first may erase the saved game.
+Update the phone with `pickleball-phone-0.1.5.apk` and update the band through Notify using `pickleball-band-0.1.5.rpk`. Restart the phone announcer after updating. Both apps keep their package names and signing keys, and the saved-game format is unchanged. Update in place; uninstalling first may erase the saved game. An older phone APK still supports scoring, but the new music page will ask you to update it.
 
-On the band, **We won / They won** are the large rally buttons. **Undo**, **Speak**, and **More** sit below them. **More** opens corrections, new-game settings and phone connection. If needed, use **More → Phone connection → Reconnect**, then return to the game and tap **Speak**.
+On the band, **swipe left from the score page for music**, then swipe right or tap **Back to score** to return. **More → Music controls** also opens the page. The large **We won / They won** rally buttons remain 180 × 100 pixels. Undo, Speak, corrections and connection controls remain available.
+
+## Music controls
+
+1. Keep Notify connected and the Pickleball phone announcer running.
+2. Start music or a podcast in your preferred Android player.
+3. Swipe left on the band's score page. Use **Play / Pause**, **Previous**, **Next**, and the media-volume **− / +** buttons.
+4. Swipe right or tap **Back to score** to continue scoring. The game and undo history are preserved.
+
+The phone sends standard Android media-key events to the active or most recently used media session. Player support varies; Previous may restart the current track. The band reports **control sent**, which confirms dispatch on the phone, not that playback changed. This version does not display track titles or playback state. It needs no notification-access permission or Tasker setup. Volume changes affect the phone's media stream, including score announcements, and some audio outputs have fixed volume.
+
+Music commands use their own acknowledgments and sequence numbers. Duplicate messages cannot toggle playback twice within the same connection, and offline commands are not queued or automatically retried. Swiping uses Vela's native horizontal pager, with a drag guard to prevent rally taps during a swipe. A native band workout still prevents opening Pickleball; this release adds music controls inside Pickleball only.
 
 ## Band layout
 
@@ -23,7 +34,7 @@ Xiaomi specifies a **212 × 520 pixel, 1.72-inch AMOLED** display for the Band 1
 - Score correction uses compact minus/value/plus rows. Setup and correction controls fit on screen without vertical overflow.
 - Text has explicit widths, line heights and wrapping limits. Long connection details scroll independently while Reconnect and Back stay visible.
 
-![Band 10 layout preview](docs/band-ui-0.1.4.png)
+![Band 10 layout preview](docs/band-ui-0.1.5.png)
 
 This preview uses the source template and CSS in a browser with a conservative rounded display mask. It checks sample two-digit scores, long status messages and the secondary screens; it is not a screenshot or emulator of Vela.
 
@@ -33,8 +44,8 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.4.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.4.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.5.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.5.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
 5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Voice settings** to install an offline English voice and then stop/start the announcer.
@@ -62,6 +73,7 @@ Each update is saved on the band before transmission. Updates made offline stay 
 3. Lock the phone, wait a minute, and score another rally. Repeat after several minutes.
 4. Test Undo and a correction affecting both points and server.
 5. Disconnect the band, record a rally, reconnect and verify the current score syncs silently. Tap Speak to announce it.
+6. Start a track on the phone, swipe left on the band, and test play/pause, next/previous and volume. Repeat with the phone locked. Swipe back across the rally buttons and confirm that no point was added.
 
 If it fails, tap **Copy connection details** on the phone and include that text plus the band's **Phone link** status and diagnosis in a report. It includes the app/Android/Notify versions, whether Notify's Interconnect service is visible, connection/voice errors, the last message-send result and whether the phone has received a band message. It excludes band identifiers and keys. “Notify listener ready” means Notify accepted listener registration; “Band app connected” means a score packet was received and validated. A send accepted by Notify alone does not confirm delivery to the band. These details distinguish a missing Notify service, authorization failure, missing band communication and unavailable TTS. **Score spoken** means Android's speech engine reported completion; it cannot establish that the phone's volume was audible on court. Android battery management may need adjustment if the announcer stops while the phone is locked.
 
@@ -84,7 +96,7 @@ The Android build creates a local prototype signing key and copies the matching 
 
 Keep `sign/` and `band/sign/` private and preserve them for updates to an installed pair. They are deliberately excluded from the distributable source archive. Rebuilding without those keys creates a new signing identity; Android will require removal of an older differently signed build before installing it. Do not uninstall the band app to update it without first noting the current score, because uninstallation may erase the saved game.
 
-Run `npm test` at the project root for the 17 scoring and band-controller tests, including reconnect/resume, saved-game preservation, stale callbacks and diagnosis errors. For the Android score/protocol tests, download `org.json:json:20240303` from Maven Central as a JVM-only test dependency, then run:
+Run `npm test` at the project root for the 21 scoring and band-controller tests, including reconnect/resume, saved-game preservation, swipe/tap isolation, music delivery, stale callbacks and diagnosis errors. For the Android score/protocol tests, download `org.json:json:20240303` from Maven Central as a JVM-only test dependency, then run:
 
 ```bash
 "$PICKLEBALL_JDK/bin/javac" -cp /path/to/json-20240303.jar -d build/java-tests android/src/com/wmahmood/pickleball/Score.java android/src/com/wmahmood/pickleball/MessageOrder.java tests/ScoreTest.java
@@ -111,6 +123,13 @@ The Android reply/cleanup regression uses the real service methods with SDK/pref
 
 The test skips Android constructors with JDK 17's `Unsafe` solely to instantiate its test doubles; it does not emulate a phone, Notify service or Bluetooth connection.
 
+The music protocol has 24 checks for session validation, duplicate and out-of-order delivery, dispatch failures and independent media actions:
+
+```bash
+"$PICKLEBALL_JDK/bin/javac" -cp /path/to/json-20240303.jar -d build/java-tests android/src/com/wmahmood/pickleball/MediaRemote.java tests/MediaRemoteTest.java
+"$PICKLEBALL_JDK/bin/java" -cp build/java-tests:/path/to/json-20240303.jar com.wmahmood.pickleball.MediaRemoteTest
+```
+
 After fetching the SDK, run `python3 -m unittest discover -s tests -p 'test_*.py'` to verify the provider library and Android package visibility agree. No real-device connection is emulated by these tests.
 
 To regenerate the browser layout preview, run `node scripts/preview_band.cjs` with Playwright and its Chromium browser installed. If Playwright is installed separately, set `PICKLEBALL_PLAYWRIGHT` to its module path. The script writes the preview PNG in `docs/`, an HTML copy in `build/`, and reports text overflow outside the intentional connection-details scroll area. It does not emulate Vela rendering.
@@ -120,6 +139,7 @@ To regenerate the browser layout preview, run `node scripts/preview_band.cjs` wi
 - [Xiaomi Smart Band 10 display specifications](https://www.mi.com/global/product/xiaomi-smart-band-10/specs/)
 - [Xiaomi Interconnect documentation and SDK/demo download](https://iot.mi.com/vela/quickapp/en/features/network/interconnect.html)
 - [Notify's custom Interconnect SDK, Android demo and integration instructions](https://www.mibandnotify.com/xiaomi-mi-band/notify-xms-app-instructions.php)
+- [Vela native swiper documentation](https://iot.mi.com/vela/quickapp/en/components/container/swiper.html)
 - [Xiaomi Vela app documentation](https://iot.mi.com/vela/quickapp/en/)
 - [Notify wearable apps](https://www.mibandnotify.com/xiaomi-mi-band/notify-app.php)
 

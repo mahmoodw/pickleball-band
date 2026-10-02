@@ -11,7 +11,7 @@ import com.xiaomi.xms.wearable.auth.Permission;
 import com.xiaomi.xms.wearable.node.Node;
 
 public class MainActivity extends Activity {
-    private TextView score, details, connection, speech, feedback;
+    private TextView score, details, connection, speech, music, feedback;
     private final BandSelection selection = new BandSelection();
     private long accessRequest;
     private boolean accessPending;
@@ -34,6 +34,7 @@ public class MainActivity extends Activity {
         details = label(body,"Open Pickleball on your band to sync the score.",17,Color.WHITE);
         connection = label(body,"",15,Color.rgb(164,183,172));
         speech = label(body,"",15,Color.rgb(164,183,172));
+        music = label(body,"",15,Color.rgb(164,183,172));
         button(body,"Start announcer",() -> {
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1);
             startForegroundService(new Intent(this,AnnouncerService.class)); render();
@@ -55,7 +56,7 @@ public class MainActivity extends Activity {
         button(body,"Request band access (if needed)",this::grantAccess);
         button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Audio follows your phone's media volume and output.\n\nVersion 0.1.4. On the updated band app, use More for corrections, new games and phone connection.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Audio follows your phone's media volume and output.\n\nVersion 0.1.5. Swipe left on the band score page for music controls. Start playback in your phone music app first. Use More for corrections, new games and phone connection.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;
@@ -70,6 +71,7 @@ public class MainActivity extends Activity {
         score.setText(p.getString("score","—")); details.setText(p.getString("details","Open Pickleball on your band to sync the score."));
         connection.setText(AnnouncerService.running ? p.getString("connection","Connecting...") : "Announcer stopped");
         speech.setText(p.getString("speech","Use Test phone voice before your first game."));
+        music.setText("Music: " + (AnnouncerService.running ? p.getString("media","Start music on your phone, then swipe left on the band's score page.") : "Start the announcer to enable band controls."));
     }
     private void selectBand() {
         if (NotifyBridge.availablePackage(this).isEmpty()) { feedback.setText(NotifyBridge.missingMessage(this)); return; }
@@ -126,7 +128,7 @@ public class MainActivity extends Activity {
     }
     private void copyDiagnostics() {
         SharedPreferences p=getSharedPreferences(AnnouncerService.PREFS,0);
-        StringBuilder text=new StringBuilder("Pickleball 0.1.4 / Android API ").append(Build.VERSION.SDK_INT);
+        StringBuilder text=new StringBuilder("Pickleball 0.1.5 / Android API ").append(Build.VERSION.SDK_INT);
         for (String name : NotifyBridge.PACKAGES) {
             try { text.append("\n").append(name).append(" ").append(getPackageManager().getPackageInfo(name,0).versionName); }
             catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
@@ -135,6 +137,7 @@ public class MainActivity extends Activity {
         text.append("\nAnnouncer running: ").append(AnnouncerService.running);
         text.append("\nConnection: ").append(p.getString("connection","Not started"));
         text.append("\nVoice: ").append(p.getString("speech","Not started"));
+        text.append("\nMusic: ").append(p.getString("media","No controls sent"));
         text.append("\nSelection: ").append(selection.status());
         text.append("\nBand saved: ").append(p.contains("selectedNode"));
         String selectedId=p.getString("selectedNode",null);

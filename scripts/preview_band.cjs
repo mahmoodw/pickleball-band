@@ -8,21 +8,25 @@ const source=fs.readFileSync(root+'/band/src/pages/game/game.ux','utf8');
 const template=source.split('<template>')[1].split('</template>')[0];
 let css=source.split('<style>')[1].split('</style>')[0];
 css=css.replace(/lines:\s*(\d+);/g,(_,n)=>'--vela-lines: '+n+';'+(n==='1'?' white-space: nowrap;':''));
-const base={screen:'game',us:8,them:6,serveLabel:'We serve / server 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
+const base={screen:'game',pageIndex:0,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
 const scenes=[
  {name:'During play',state:{}},
+ {name:'Swipe to music',state:{pageIndex:1}},
  {name:'More',state:{screen:'more'}},
  {name:'Correct score',state:{screen:'edit',editUs:99,editThem:99}},
  {name:'New game',state:{screen:'new'}},
  {name:'Long message',state:{screen:'connection',phoneStatus:'Phone offline - score saved',linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone. The connection details can be copied from the phone app.'}},
- {name:'Long score / offline',state:{us:99,them:98,serveLabel:'They serve / server 2',phoneStatus:'Phone offline - score saved',notice:'Game over - Undo or New'}}
+ {name:'Long score / offline',state:{us:99,them:98,serveLabel:'They serve / server 2',phoneStatus:'Phone offline - score saved',notice:'Game over - Undo or New'}},
+ {name:'Music / old phone app',state:{pageIndex:1,musicStatus:'Update phone app for music'}},
+ {name:'Music / connection error',state:{pageIndex:1,musicStatus:'Control failed - check phone'}}
 ];
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
- const page=await browser.newPage({viewport:{width:820,height:1220},deviceScaleFactor:1});
+ const page=await browser.newPage({viewport:{width:820,height:1800},deviceScaleFactor:1});
  await page.setContent(`<html><head><style>
  *{box-sizing:border-box} body{margin:0;background:#e9ede7;font-family:Arial,sans-serif;color:#183127} h1{font-size:24px;margin:24px 24px 8px}p{font-size:13px;margin:0 24px 12px}.sheet{display:grid;grid-template-columns:repeat(3,240px);gap:20px;margin:20px 30px}.scene{width:240px}h2{font-size:14px;text-align:center;margin:0 0 10px}.device{width:212px;height:520px;margin:auto;border-radius:106px;background:#071510;overflow:hidden;box-shadow:0 0 0 6px #13251c}
  .device div{display:flex;flex-shrink:0}.device text{display:block;flex-shrink:0;overflow-wrap:anywhere}.device list{display:block;overflow-y:auto;flex-shrink:0;scrollbar-width:none}.device list-item{display:flex;flex-shrink:0;align-items:center}
+ .device swiper{display:flex;flex-shrink:0;overflow:hidden}
  ${css}
  </style></head><body><h1>Pickleball · Band 10</h1><p>212 × 520 browser layout preview · 100 px rally buttons · 44 px secondary controls</p><div class="sheet"></div></body></html>`);
  await page.evaluate(({template,scenes,base})=>{
@@ -33,6 +37,7 @@ const scenes=[
    const heading=document.createElement('h2');heading.textContent=scene.name;holder.appendChild(heading);
    const device=document.createElement('div');device.className='device';device.innerHTML=template;
    for(const el of [...device.querySelectorAll('[if]')]){if(!evaluate(el.getAttribute('if').slice(2,-2),state))el.remove();else el.removeAttribute('if');}
+   for(const pager of device.querySelectorAll('swiper'))for(const [i,slide] of [...pager.children].entries())if(i!==state.pageIndex)slide.remove();
    const walker=document.createTreeWalker(device,NodeFilter.SHOW_TEXT);let node;
    while(node=walker.nextNode())node.textContent=node.textContent.replace(/{{(.*?)}}/g,(_,expr)=>evaluate(expr,state));
    holder.appendChild(device);document.querySelector('.sheet').appendChild(holder);

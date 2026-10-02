@@ -107,6 +107,25 @@ public final class AndroidTransportTest {
         set(service,"node",null);
         call(service,"receive",new Class<?>[]{String.class,byte[].class},"",new byte[]{123,125});
         check(!prefs.containsKey("bandReceived"),"Detached service accepted an empty-ID message");
+
+        // Exercise the actual receive branch as well as the standalone command
+        // parser. Missing AudioManager in this fixture produces an error reply.
+        MediaRemote media=new MediaRemote(); media.sync("music-session");
+        set(service,"media",media); set(service,"node",""); set(service,"challenge","test-challenge");
+        JSONObject control=new JSONObject().put("type","media").put("version",1).put("session","music-session")
+            .put("sequence",1).put("action","toggle").put("challenge","test-challenge");
+        call(service,"receive",new Class<?>[]{String.class,byte[].class},"",control.toString().getBytes(StandardCharsets.UTF_8));
+        JSONObject mediaReply=packets.get(packets.size()-1);
+        check(mediaReply.getString("type").equals("mediaAck"),"Media was not routed to its own handler");
+        check(mediaReply.getString("status").equals("error"),"Missing audio service was reported as success");
+        check(destinations.get(destinations.size()-1).equals(""),"Media reply lost Notify's empty route");
+        check(!prefs.containsKey("score") && !prefs.containsKey("speech"),"Media altered score or speech");
+        int before=packets.size();
+        call(service,"receive",new Class<?>[]{String.class,byte[].class},"other-node",control.toString().getBytes(StandardCharsets.UTF_8));
+        check(packets.size()==before,"Media accepted from a different band");
+        control.put("challenge","obsolete");
+        call(service,"receive",new Class<?>[]{String.class,byte[].class},"",control.toString().getBytes(StandardCharsets.UTF_8));
+        check(packets.get(packets.size()-1).getString("type").equals("hello"),"Old challenge dispatched media instead of re-handshaking");
         System.out.println(checks+" Android reply/cleanup checks passed");
     }
 }
