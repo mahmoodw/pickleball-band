@@ -22,7 +22,9 @@ public class AnnouncerService extends Service {
     private ServiceApi serviceApi;
     private TextToSpeech tts;
     private boolean ttsReady, querying, attaching, registered, destroyed;
-    private String node = "", challenge = "", activeUtterance = "";
+    // Node IDs are opaque: Notify can use "" for its connected band. Only null
+    // means we have no route; never use String.isEmpty() to test attachment.
+    private String node = null, challenge = "", activeUtterance = "";
     private final MessageOrder order = new MessageOrder();
     private long queryStarted, attachingStarted, sendAttempt;
     private Score activeScore;
@@ -31,7 +33,7 @@ public class AnnouncerService extends Service {
     private final Runnable poll = new Runnable() { public void run() { discover(); main.postDelayed(this, 8000); } };
     private final OnServiceConnectionListener serviceListener = new OnServiceConnectionListener() {
         public void onServiceConnected() { main.post(() -> { if (!destroyed) { querying = false; discover(); } }); }
-        public void onServiceDisconnected() { main.post(() -> { cancelSpeech(); registered = false; attaching = false; node = ""; challenge = ""; status("Notify disconnected. Open Notify to reconnect the band."); }); }
+        public void onServiceDisconnected() { main.post(() -> { cancelSpeech(); registered = false; attaching = false; node = null; challenge = ""; ++sendAttempt; status("Notify disconnected. Open Notify to reconnect the band."); }); }
     };
     @Override public void onCreate() {
         super.onCreate(); running = true;
@@ -96,13 +98,14 @@ public class AnnouncerService extends Service {
         Wearable.getNodeApi(this).getConnectedNodes().addOnSuccessListener(nodes -> main.post(() -> {
             if (destroyed || generation != queryStarted) return;
             querying = false;
-            String wanted = getSharedPreferences(PREFS, 0).getString("selectedNode", "");
+            String wanted = getSharedPreferences(PREFS, 0).getString("selectedNode", null);
             Node chosen = null;
-            for (Node n : nodes) if (n.id.equals(wanted)) chosen = n;
-            if (chosen == null && wanted.isEmpty() && nodes.size() == 1) chosen = nodes.get(0);
-            if (chosen == null) {
+            for (Node n : nodes) if (n.id != null && n.id.equals(wanted)) chosen = n;
+            if (chosen == null && wanted == null && nodes.size() == 1) chosen = nodes.get(0);
+            if (chosen == null || chosen.id == null) {
                 detach();
-                status(nodes.isEmpty() || !wanted.isEmpty() ? "Notify cannot see your selected band. Open Notify to reconnect, or select a band again." : "Multiple wearables connected. Select your Band 10 in this app.");
+                status(chosen != null ? "Notify returned a band without an ID. Select your band again." :
+                    nodes.isEmpty() || wanted != null ? "Notify cannot see your selected band. Open Notify to reconnect, or select a band again." : "Multiple wearables connected. Select your Band 10 in this app.");
                 return;
             }
             if (!chosen.id.equals(node) || !registered) attach(chosen.id);
@@ -129,15 +132,15 @@ public class AnnouncerService extends Service {
             }));
     }
     private void detach() {
-        if (messages != null && !node.isEmpty()) messages.removeListener(node);
-        node = ""; challenge = ""; registered = false; attaching = false;
+        if (messages != null && node != null) messages.removeListener(node);
+        node = null; challenge = ""; registered = false; attaching = false;
         ++sendAttempt;
     }
     private void hello() {
         try { send(new JSONObject().put("type", "hello").put("challenge", challenge)); } catch (Exception ignored) {}
     }
     private void receive(String from, byte[] bytes) {
-        if (destroyed || !from.equals(node) || bytes.length > 8192) return;
+        if (destroyed || node == null || !node.equals(from) || bytes == null || bytes.length > 8192) return;
         try {
             JSONObject p = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
             getSharedPreferences(PREFS,0).edit().putBoolean("bandReceived",true).apply();
@@ -188,7 +191,7 @@ public class AnnouncerService extends Service {
         try { send(new JSONObject().put("type","ack").put("session",s.session).put("sequence",s.sequence).put("status",result)); } catch (Exception ignored) {}
     }
     private void send(JSONObject p) {
-        if (messages == null || node.isEmpty()) return;
+        if (messages == null || node == null) return;
         final long request=++sendAttempt;
         getSharedPreferences(PREFS,0).edit().putString("messageSend","Waiting for Notify's send result").apply();
         messages.sendMessage(node, p.toString().getBytes(StandardCharsets.UTF_8))
