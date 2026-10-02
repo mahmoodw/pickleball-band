@@ -2,24 +2,26 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. For an existing v0.1.0 installation, only the Android APK needs updating; see the upgrade steps below.
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. For an existing installation, only the Android APK needs updating; see the upgrade steps below.
 
-**Prototype status:** both v0.1.0 apps were installed on a global Band 10/Android setup, but the original Android connection failed. Version **0.1.1 replaces the incompatible official Xiaomi SDK with Notify's custom Interconnect library**. Builds, signature verification and scoring/transport tests pass; the corrected Notify connection and speech with the phone locked still need real-device testing.
+**Prototype status:** installation, band discovery and Notify listener registration have been confirmed on a global Band 10 with Android API 36 and Notify 23.8.4. Version **0.1.2 fixes a false discovery timeout after the band list appeared**, separates selection from the optional device-management permission request, and reports message-send errors. End-to-end score announcements and speech with the phone locked still need real-device verification.
 
 The band keeps the game and undo history locally. The phone receives score snapshots and speaks using an offline English Android voice. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade from v0.1.0
+## Upgrade from v0.1.0 or v0.1.1
 
-Install `pickleball-phone-0.1.1.apk` over the existing Android app. The app keeps its package name and signing key, so an in-place update is supported. The installed **v0.1.0 band app remains compatible**; updating or reinstalling the RPK is unnecessary for this connection fix. The v0.1.1 RPK is included for new installations. Saved band games are unchanged.
+Install `pickleball-phone-0.1.2.apk` over the existing Android app. The app keeps its package name and signing key, so an in-place update is supported. The installed **v0.1.0 and v0.1.1 band apps remain compatible**; updating or reinstalling the RPK is unnecessary for this connection fix. The v0.1.2 RPK is included for new installations. Saved band games are unchanged.
 
-Open Notify and confirm the band is connected there. In Pickleball, tap **Grant band access / select band**, select the band, then **Start announcer**. A band selection previously saved through Mi Fitness is automatically cleared when switching to Notify. Open the band app and tap **Speak** after it connects.
+Open Notify and confirm the band is connected there. In Pickleball, tap **Select band**, select the band, then **Start announcer**. A band selection previously saved through Mi Fitness is automatically cleared when switching to Notify. Open the band app and tap **Speak** after it connects.
+
+In v0.1.1, “Notify is not responding” could appear after successful discovery because the discovery timer was still active during selection and an unanswered permission request. It did not establish that Notify or the band was disconnected. The new selection flow saves your choice immediately; **Request band access (if needed)** is a separate troubleshooting action for permission errors, following Notify’s demo which registers message listeners independently of device-management authorization.
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.1.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install `pickleball-band-0.1.1.rpk` through Notify's custom-app installation flow if Pickleball is not already installed on your band. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.2.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install `pickleball-band-0.1.2.rpk` through Notify's custom-app installation flow if Pickleball is not already installed on your band. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
-4. Open **Pickleball** on the phone. Tap **Grant band access / select band**, select the Band 10 and complete any Notify authorization prompt.
+4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
 5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Voice settings** to install an offline English voice and then stop/start the announcer.
 6. Open **Pickleball** on the band. Start a new game, choosing singles/doubles, who serves first and 11/15/21 points. Wait for **Phone connected**, then tap **Speak**. The phone should read the displayed call; the band should eventually say **Score spoken**.
 
@@ -45,7 +47,7 @@ Each update is saved on the band before transmission. Updates made offline stay 
 4. Test Undo and a correction affecting both points and server.
 5. Disconnect the band, record a rally, reconnect and verify the current score syncs silently. Tap Speak to announce it.
 
-If it fails, tap **Copy connection details** on the phone and include that text plus the band's status in a report. It includes the app/Android/Notify versions, whether Notify's Interconnect service is visible, and connection/voice errors. It excludes band identifiers and keys. These details distinguish a missing Notify service, authorization failure, missing band communication and unavailable TTS. **Score spoken** means Android's speech engine reported completion; it cannot establish that the phone's volume was audible on court. Android battery management may need adjustment if the announcer stops while the phone is locked.
+If it fails, tap **Copy connection details** on the phone and include that text plus the band's status in a report. It includes the app/Android/Notify versions, whether Notify's Interconnect service is visible, connection/voice errors, the last message-send result and whether the phone has received a band message. It excludes band identifiers and keys. “Notify listener ready” means Notify accepted listener registration; “Band app connected” means a score packet was received and validated. A send accepted by Notify alone does not confirm delivery to the band. These details distinguish a missing Notify service, authorization failure, missing band communication and unavailable TTS. **Score spoken** means Android's speech engine reported completion; it cannot establish that the phone's volume was audible on court. Android battery management may need adjustment if the announcer stops while the phone is locked.
 
 If the app says Notify is installed but its Interconnect service is unavailable, update Notify and open it, then retry. A disconnected phone does not prevent local band scoring.
 
@@ -74,6 +76,15 @@ Run `npm test` at the project root for the 11 scoring and band-controller tests.
 ```
 
 Those 25 checks exercise score syntax, corrections, game-over calls, input validation, duplicate/out-of-order delivery and silent synchronization before speech. They do not emulate Notify or a physical wearable.
+
+Run the discovery/selection callback regressions without Android dependencies:
+
+```bash
+"$PICKLEBALL_JDK/bin/javac" -d build/java-tests android/src/com/wmahmood/pickleball/BandSelection.java tests/BandSelectionTest.java
+"$PICKLEBALL_JDK/bin/java" -cp build/java-tests com.wmahmood.pickleball.BandSelectionTest
+```
+
+These checks cover successful selection followed by the old discovery timeout, time spent in the chooser, overlapping requests, cancellation, errors and retry.
 
 After fetching the SDK, run `python3 -m unittest discover -s tests -p 'test_*.py'` to verify the provider library and Android package visibility agree. No real-device connection is emulated by these tests.
 

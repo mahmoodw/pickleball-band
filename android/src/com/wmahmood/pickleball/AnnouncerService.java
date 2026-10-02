@@ -24,7 +24,7 @@ public class AnnouncerService extends Service {
     private boolean ttsReady, querying, attaching, registered, destroyed;
     private String node = "", challenge = "", activeUtterance = "";
     private final MessageOrder order = new MessageOrder();
-    private long queryStarted, attachingStarted;
+    private long queryStarted, attachingStarted, sendAttempt;
     private Score activeScore;
     private AudioManager audio;
     private AudioFocusRequest focus;
@@ -39,6 +39,7 @@ public class AnnouncerService extends Service {
         nm.createNotificationChannel(new NotificationChannel("announcer", "Game announcements", NotificationManager.IMPORTANCE_LOW));
         startForeground(1, notification("Connecting through Notify..."));
         SharedPreferences prefs = getSharedPreferences(PREFS, 0);
+        prefs.edit().putBoolean("bandReceived",false).putString("messageSend","Not attempted").apply();
         if (!"notify".equals(prefs.getString("transport", ""))) {
             // IDs saved by the old Mi Fitness provider do not identify Notify nodes.
             prefs.edit().remove("selectedNode").putString("transport", "notify").apply();
@@ -120,16 +121,17 @@ public class AnnouncerService extends Service {
             .addOnSuccessListener(value -> main.post(() -> {
                 if (destroyed || !id.equals(node)) return;
                 attaching = false; registered = true; challenge = UUID.randomUUID().toString(); order.reset();
-                hello(); status("Band connected. Open Pickleball on your band.");
+                status("Notify listener ready. Waiting for Pickleball on your band."); hello();
             })).addOnFailureListener(error -> main.post(() -> {
                 if (!id.equals(node)) return;
                 attaching = false; registered = false;
-                status("Band messages unavailable. Use Grant band access, then retry. " + error.getMessage());
+                status("Band listener failed: " + error.toString() + ". If permission was denied, use Request band access.");
             }));
     }
     private void detach() {
         if (messages != null && !node.isEmpty()) messages.removeListener(node);
         node = ""; challenge = ""; registered = false; attaching = false;
+        ++sendAttempt;
     }
     private void hello() {
         try { send(new JSONObject().put("type", "hello").put("challenge", challenge)); } catch (Exception ignored) {}
@@ -138,8 +140,10 @@ public class AnnouncerService extends Service {
         if (destroyed || !from.equals(node) || bytes.length > 8192) return;
         try {
             JSONObject p = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+            getSharedPreferences(PREFS,0).edit().putBoolean("bandReceived",true).apply();
             if ("hello".equals(p.optString("type"))) {
                 challenge = UUID.randomUUID().toString(); order.reset();
+                status("Band app reached the phone. Waiting for score sync...");
                 hello(); return;
             }
             if (challenge.isEmpty() || !challenge.equals(p.optString("challenge"))) { hello(); return; }
@@ -183,7 +187,20 @@ public class AnnouncerService extends Service {
     private void ack(Score s, String result) {
         try { send(new JSONObject().put("type","ack").put("session",s.session).put("sequence",s.sequence).put("status",result)); } catch (Exception ignored) {}
     }
-    private void send(JSONObject p) { if (messages != null && !node.isEmpty()) messages.sendMessage(node, p.toString().getBytes(StandardCharsets.UTF_8)); }
+    private void send(JSONObject p) {
+        if (messages == null || node.isEmpty()) return;
+        final long request=++sendAttempt;
+        getSharedPreferences(PREFS,0).edit().putString("messageSend","Waiting for Notify's send result").apply();
+        messages.sendMessage(node, p.toString().getBytes(StandardCharsets.UTF_8))
+            .addOnSuccessListener(value -> main.post(() -> {
+                if (destroyed || request != sendAttempt) return;
+                getSharedPreferences(PREFS,0).edit().putString("messageSend","Accepted by Notify (band receipt not confirmed)").apply();
+            })).addOnFailureListener(error -> main.post(() -> {
+                if (destroyed || request != sendAttempt) return;
+                getSharedPreferences(PREFS,0).edit().putString("messageSend",error.toString()).apply();
+                status("Message to band failed: " + error.toString());
+            }));
+    }
     private void speechStatus(String text) { getSharedPreferences(PREFS,0).edit().putString("speech",text).apply(); }
     private void status(String text) {
         if (destroyed) return;
