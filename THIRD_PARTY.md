@@ -4,5 +4,6 @@
 - **Xiaomi aiot-toolkit 2.0.5:** used to compile and sign the Vela RPK. Build dependency versions and provenance are captured in `band/package-lock.json`.
 - **Android platform/build tools** and **Eclipse Temurin JDK 17:** used for APK compilation and signing; not included in the source archive.
 - **JSON-java 20240303:** used only for JVM tests of Android JSON parsing; not included in the APK. Android supplies `org.json` at runtime.
+- **Playwright / Chromium:** optional development tools for the browser layout preview. Install separately; neither is bundled with the APK, RPK or source archive. The preview approximates Vela layout and is not a wearable emulator.
 
 The supplied app icons and application code were created for this project. No Mi Fitness, Notify or Xiaomi signing identity is reused.

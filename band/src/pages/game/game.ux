@@ -4,57 +4,78 @@
       <text class="title">Pickleball</text>
       <text class="hint">Loading game...</text>
     </div>
-    <div if="{{screen === 'game'}}" class="panel">
-      <text class="title">PICKLEBALL</text>
-      <div class="row labels"><text class="half">US</text><text class="half">THEM</text></div>
-      <div class="row scores"><text class="half score">{{us}}</text><text class="half score">{{them}}</text></div>
-      <text class="call">{{scoreCall}}</text>
-      <text class="hint">{{serveLabel}}</text>
+    <div if="{{screen === 'game'}}" class="panel gamePanel">
+      <div class="row scoreLabels"><text class="teamLabel">US</text><text class="teamLabel">THEM</text></div>
+      <div class="row scores"><text class="score">{{us}}</text><text class="score">{{them}}</text></div>
+      <text class="serve">{{serveLabel}}</text>
       <text class="status" onclick="connectionSettings">{{phoneStatus}}</text>
-      <div class="button primary" onclick="weWon"><text class="primaryText">We won rally</text></div>
-      <div class="button secondary" onclick="theyWon"><text class="buttonText">They won rally</text></div>
-      <div class="row">
-        <div class="button third small" onclick="undo"><text class="compactText">Undo</text></div>
-        <div class="button third small" onclick="repeat"><text class="compactText">Speak</text></div>
-        <div class="button third small" onclick="connectionSettings"><text class="compactText">Connect</text></div>
+      <div class="rallyButton ours" onclick="weWon">
+        <text class="rallyTitle oursText">We won</text><text class="rallyCaption oursText">the rally</text>
       </div>
-      <div class="row">
-        <div class="button half small" onclick="edit"><text class="buttonText">Correct</text></div>
-        <div class="button half small" onclick="settings"><text class="buttonText">New</text></div>
+      <div class="rallyButton theirs" onclick="theyWon">
+        <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
+      </div>
+      <div class="row gameActions">
+        <div class="smallButton third" onclick="undo"><text class="smallText">Undo</text></div>
+        <div class="smallButton third" onclick="repeat"><text class="smallText">Speak</text></div>
+        <div class="smallButton third" onclick="more"><text class="smallText">More</text></div>
       </div>
       <text class="foot">{{notice}}</text>
     </div>
+    <div if="{{screen === 'more'}}" class="panel">
+      <text class="title">Game options</text>
+      <text class="menuCall">{{scoreCall}}</text>
+      <div class="button" onclick="edit"><text class="buttonText">Correct score</text></div>
+      <div class="button" onclick="connectionSettings"><text class="buttonText">Phone connection</text></div>
+      <div class="button" onclick="settings"><text class="buttonText">New game</text></div>
+      <div class="button" onclick="back"><text class="buttonText">Back to game</text></div>
+    </div>
     <div if="{{screen === 'edit'}}" class="panel">
-      <text class="title">CORRECT SCORE</text>
-      <text class="hint">Change, then save</text>
-      <text class="hint">Our points: {{editUs}}</text>
-      <div class="row"><div class="button half" onclick="usMinus"><text class="buttonText">-</text></div><div class="button half" onclick="usPlus"><text class="buttonText">+</text></div></div>
-      <text class="hint">Their points: {{editThem}}</text>
-      <div class="row"><div class="button half" onclick="themMinus"><text class="buttonText">-</text></div><div class="button half" onclick="themPlus"><text class="buttonText">+</text></div></div>
-      <div class="button" onclick="switchServing"><text class="buttonText">Serving: {{editServing}}</text></div>
-      <div if="{{isDoubles}}" class="button" onclick="switchServer"><text class="buttonText">Server: {{editServer}}</text></div>
+      <text class="title">Correct score</text>
+      <text class="hint">Save to announce</text>
+      <text class="fieldLabel">Our points</text>
+      <div class="row stepper">
+        <div class="smallButton stepButton" onclick="usMinus"><text class="stepText">−</text></div>
+        <text class="editValue">{{editUs}}</text>
+        <div class="smallButton stepButton" onclick="usPlus"><text class="stepText">+</text></div>
+      </div>
+      <text class="fieldLabel">Their points</text>
+      <div class="row stepper">
+        <div class="smallButton stepButton" onclick="themMinus"><text class="stepText">−</text></div>
+        <text class="editValue">{{editThem}}</text>
+        <div class="smallButton stepButton" onclick="themPlus"><text class="stepText">+</text></div>
+      </div>
+      <div class="button compact" onclick="switchServing"><text class="buttonText">Serving: {{editServing}}</text></div>
+      <div if="{{isDoubles}}" class="button compact" onclick="switchServer"><text class="buttonText">Server: {{editServer}}</text></div>
       <div class="button primary" onclick="saveEdit"><text class="primaryText">Save &amp; speak</text></div>
-      <div class="button" onclick="back"><text class="buttonText">Cancel</text></div>
+      <div class="smallButton wide" onclick="back"><text class="smallText">Cancel</text></div>
     </div>
     <div if="{{screen === 'new'}}" class="panel">
-      <div class="row"><text class="newTitle">NEW GAME</text><text class="connectLink" onclick="connectionSettings">Connect</text></div>
-      <text class="hint">Traditional scoring</text>
-      <div class="button" onclick="toggleMode"><text class="buttonText">{{newMode}}</text></div>
-      <div class="button" onclick="toggleFirst"><text class="buttonText">First serve: {{newFirst}}</text></div>
-      <div class="button" onclick="toggleTarget"><text class="buttonText">Play to {{newTarget}}</text></div>
-      <text class="hint">Win by two</text>
-      <text class="warning">{{newWarning}}</text>
+      <text class="title">New game</text>
+      <text class="hint">Side-out · win by two</text>
+      <div class="button compact" onclick="toggleMode"><text class="buttonText">{{newMode}}</text></div>
+      <div class="button compact" onclick="toggleFirst"><text class="buttonText">First serve: {{newFirst}}</text></div>
+      <div class="button compact" onclick="toggleTarget"><text class="buttonText">Play to {{newTarget}}</text></div>
+      <text if="{{newWarning !== ''}}" class="warning">{{newWarning}}</text>
       <div class="button primary" onclick="startGame"><text class="primaryText">Start game</text></div>
-      <div if="{{hasGame}}" class="button" onclick="back"><text class="buttonText">Cancel</text></div>
+      <div class="row footerActions">
+        <div class="smallButton half" onclick="connectionSettings"><text class="smallText">Phone link</text></div>
+        <div if="{{hasGame}}" class="smallButton half" onclick="back"><text class="smallText">Cancel</text></div>
+      </div>
     </div>
     <div if="{{screen === 'connection'}}" class="panel">
-      <text class="title">PHONE CONNECTION</text>
+      <text class="title">Phone link</text>
       <text class="linkStatus">{{phoneStatus}}</text>
-      <text class="linkDetails">{{linkDetails}}</text>
-      <text class="linkHelp">Keep Notify connected. Open Pickleball on the phone and start the announcer.</text>
+      <list class="linkScroll">
+        <list-item type="details" class="linkItem">
+          <text class="bodyText">{{linkDetails}}</text>
+          <text class="bodyText muted">Keep Notify connected and the phone announcer running.</text>
+        </list-item>
+      </list>
+      <text class="hint">Swipe details to read more</text>
       <div class="button primary" onclick="reconnect"><text class="primaryText">Reconnect</text></div>
-      <div class="button" onclick="connectionBack"><text class="buttonText">Back</text></div>
-      <text class="linkHelp">Your score and undo history are kept.</text>
+      <div class="smallButton wide" onclick="connectionBack"><text class="smallText">Back</text></div>
+      <text class="foot">Your game is kept.</text>
     </div>
   </div>
 </template>
@@ -236,7 +257,8 @@ export default {
     draft.scores = [this.editUs, this.editThem]; draft.serving = this.editServing === 'Us' ? 0 : 1;
     draft.server = this.editServer; this.save(rules.correct(game, draft), 'correct');
   },
-  settings() { if (!busy) { this.newWarning = 'Starting replaces this game and its undo history.'; this.screen = 'new'; } },
+  more() { if (!busy) this.screen = 'more'; },
+  settings() { if (!busy) { this.newWarning = 'Replaces this game and its undo history.'; this.screen = 'new'; } },
   toggleMode() { this.newMode = this.newMode === 'Doubles' ? 'Singles' : 'Doubles'; },
   toggleFirst() { this.newFirst = this.newFirst === 'Us' ? 'Them' : 'Us'; },
   toggleTarget() { this.newTarget = this.newTarget === 11 ? 15 : this.newTarget === 15 ? 21 : 11; },
@@ -245,32 +267,48 @@ export default {
 };
 </script>
 <style>
-.page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; padding: 18px 10px 18px 10px; }
-.panel { width: 192px; flex-direction: column; align-items: center; }
-.title { font-size: 16px; color: #baf75e; text-align: center; height: 28px; }
-.row { width: 192px; flex-direction: row; justify-content: space-between; }
-.half { width: 93px; text-align: center; }
-.labels { height: 20px; color: #a4b7ac; font-size: 13px; }
-.scores { height: 64px; }
-.score { font-size: 48px; color: #ffffff; }
-.call { font-size: 27px; color: #baf75e; height: 40px; text-align: center; }
-.hint { font-size: 14px; color: #c0d3c6; text-align: center; height: 27px; }
-.status { font-size: 11px; color: #8cbbb0; height: 29px; text-align: center; }
-.button { width: 192px; height: 45px; background-color: #20382c; border-radius: 12px; margin-bottom: 7px; align-items: center; justify-content: center; }
-.buttonText { color: #ffffff; font-size: 17px; text-align: center; }
-.half { width: 93px; }
-.third { width: 61px; }
-.compactText { color: #ffffff; font-size: 13px; text-align: center; }
-.newTitle { width: 125px; height: 28px; font-size: 16px; color: #baf75e; }
-.connectLink { width: 61px; height: 28px; font-size: 13px; color: #baf75e; text-align: center; }
-.linkStatus { width: 192px; height: 44px; font-size: 17px; color: #baf75e; text-align: center; }
-.linkDetails { width: 192px; height: 115px; font-size: 15px; color: #ffffff; }
-.linkHelp { width: 192px; height: 76px; font-size: 13px; color: #a4b7ac; }
+/* Band 10: 212 × 520. The centered 180 × 448 panel leaves room for the
+   rounded display ends. Game content fits without scrolling or shrinking. */
+.page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; align-items: center; justify-content: center; }
+.panel { width: 180px; height: 448px; flex-direction: column; align-items: center; justify-content: center; }
+.row { width: 180px; flex-direction: row; align-items: center; justify-content: space-between; }
+.title { width: 160px; height: 30px; font-size: 20px; line-height: 26px; color: #baf75e; text-align: center; lines: 1; }
+.hint { width: 180px; height: 26px; font-size: 13px; line-height: 18px; color: #a4b7ac; text-align: center; lines: 1; }
+.scoreLabels { height: 20px; }
+.teamLabel { width: 86px; height: 20px; font-size: 13px; line-height: 18px; color: #a4b7ac; text-align: center; lines: 1; }
+.scores { height: 58px; }
+.score { width: 86px; height: 58px; font-size: 48px; line-height: 56px; color: #ffffff; text-align: center; lines: 1; }
+.serve { width: 180px; height: 22px; font-size: 14px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
+.status { width: 172px; height: 32px; font-size: 12px; line-height: 15px; color: #a4d7bf; text-align: center; lines: 2; }
+.rallyButton { width: 180px; height: 100px; margin-bottom: 8px; border-radius: 18px; flex-direction: column; align-items: center; justify-content: center; }
+.ours { background-color: #baf75e; }
+.theirs { background-color: #285e4b; }
+.rallyTitle { width: 164px; height: 34px; font-size: 27px; line-height: 32px; color: #ffffff; text-align: center; lines: 1; }
+.rallyCaption { width: 164px; height: 20px; font-size: 15px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
+.oursText { color: #10240a; }
+.gameActions { height: 44px; margin-top: 8px; }
+.smallButton { height: 44px; background-color: #20382c; border-radius: 12px; align-items: center; justify-content: center; }
+.third { width: 56px; }
+.half { width: 86px; }
+.wide { width: 160px; }
+.smallText { font-size: 14px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
+.foot { width: 160px; height: 36px; font-size: 12px; line-height: 16px; color: #a4b7ac; text-align: center; lines: 2; }
+.button { width: 180px; height: 52px; margin-bottom: 8px; background-color: #20382c; border-radius: 14px; align-items: center; justify-content: center; }
+.compact { height: 44px; }
+.buttonText { width: 164px; font-size: 17px; line-height: 22px; color: #ffffff; text-align: center; lines: 1; }
 .primary { background-color: #baf75e; }
-.primaryText { color: #10240a; font-size: 17px; text-align: center; }
-.secondary { background-color: #316946; }
-.small { height: 40px; }
-
-.foot { font-size: 11px; color: #a4b7ac; height: 22px; text-align: center; }
-.warning { font-size: 13px; color: #e1c589; height: 67px; text-align: center; }
+.primaryText { width: 164px; font-size: 18px; line-height: 24px; color: #10240a; text-align: center; lines: 1; }
+.menuCall { width: 180px; height: 40px; font-size: 22px; line-height: 32px; color: #ffffff; text-align: center; lines: 1; }
+.fieldLabel { width: 180px; height: 20px; font-size: 14px; line-height: 18px; color: #a4b7ac; text-align: center; lines: 1; }
+.stepper { height: 48px; margin-bottom: 8px; }
+.stepButton { width: 56px; height: 48px; }
+.stepText { width: 48px; font-size: 28px; line-height: 36px; color: #ffffff; text-align: center; lines: 1; }
+.editValue { width: 60px; height: 40px; font-size: 30px; line-height: 38px; color: #ffffff; text-align: center; lines: 1; }
+.warning { width: 172px; height: 60px; font-size: 13px; line-height: 18px; color: #e1c589; text-align: center; lines: 3; }
+.footerActions { height: 44px; }
+.linkStatus { width: 172px; height: 44px; font-size: 17px; line-height: 21px; color: #baf75e; text-align: center; lines: 2; }
+.linkScroll { width: 180px; height: 176px; margin-bottom: 8px; }
+.linkItem { width: 180px; flex-direction: column; }
+.bodyText { width: 172px; font-size: 15px; line-height: 21px; color: #ffffff; margin-bottom: 16px; }
+.muted { color: #a4b7ac; }
 </style>

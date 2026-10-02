@@ -135,3 +135,17 @@ test('retry works without optional diagnosis support and offline heartbeat retri
   for (const tick of h.intervals.values()) tick();
   assert.equal(h.sent.length,connectedCount);
 });
+test('secondary controls remain reachable through More without changing the game', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.weWon();
+  const saved=h.writes.at(-1), writes=h.writes.length;
+  h.page.more(); assert.equal(h.page.screen,'more');
+  h.page.edit(); assert.equal(h.page.screen,'edit');
+  h.page.back(); assert.equal(h.page.screen,'game');
+  h.page.more(); h.page.connectionSettings();
+  assert.equal(h.page.screen,'connection');
+  h.page.connectionBack(); assert.equal(h.page.screen,'more');
+  h.page.settings(); assert.equal(h.page.screen,'new');
+  h.page.back(); assert.equal(h.page.screen,'game');
+  assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
+  assert.equal(h.writes.at(-1),saved);
+});

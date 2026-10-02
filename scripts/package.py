@@ -15,7 +15,7 @@ shutil.copyfile(rpk, dist / ('pickleball-band-' + version + '.rpk'))
 shutil.copyfile(root / 'README.md', dist / 'README.md')
 shutil.copyfile(root / 'THIRD_PARTY.md', dist / 'THIRD_PARTY.md')
 sources = [root / p for p in ['.gitignore','README.md','THIRD_PARTY.md','package.json','band/package.json','band/package-lock.json','android/AndroidManifest.xml']]
-for folder in ['band/src','android/src','tests','scripts']:
+for folder in ['band/src','android/src','tests','scripts','docs']:
     sources.extend(p for p in (root / folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts)
 with ZipFile(dist / ('pickleball-source-' + version + '.zip'), 'w', ZIP_DEFLATED) as z:
     for path in sorted(sources):
