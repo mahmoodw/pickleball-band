@@ -31,7 +31,9 @@ public class AnnouncerService extends Service {
     private long queryStarted, attachingStarted, sendAttempt;
     private Score activeScore;
     private AudioManager audio;
-    private AudioFocusRequest focus;
+    private AudioFocusRequest duckFocus, pauseFocus, heldFocus;
+    private AudioAttributes speechAttributes;
+    private AnnouncementAudio announcements;
     private final Runnable poll = new Runnable() { public void run() { discover(); main.postDelayed(this, 8000); } };
     private final OnServiceConnectionListener serviceListener = new OnServiceConnectionListener() {
         public void onServiceConnected() { main.post(() -> { if (!destroyed) { querying = false; discover(); } }); }
@@ -49,9 +51,48 @@ public class AnnouncerService extends Service {
             prefs.edit().remove("selectedNode").putString("transport", "notify").apply();
         }
         audio = getSystemService(AudioManager.class);
-        AudioAttributes attrs = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
-        focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attrs)
-            .setOnAudioFocusChangeListener(change -> { if (change < 0) { cancelSpeech(); status("Audio interrupted. Tap Speak on the band to repeat."); } }, main).build();
+        speechAttributes = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+        AudioManager.OnAudioFocusChangeListener focusChanges = change -> {
+            if (change < 0) { cancelSpeech(); status("Audio interrupted. Tap Speak on the band to repeat."); }
+        };
+        duckFocus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(speechAttributes)
+            .setOnAudioFocusChangeListener(focusChanges, main).build();
+        pauseFocus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(speechAttributes)
+            .setOnAudioFocusChangeListener(focusChanges, main).build();
+        announcements = new AnnouncementAudio(new AnnouncementAudio.Output() {
+            public boolean requestFocus(boolean pauseMusic) {
+                heldFocus = pauseMusic ? pauseFocus : duckFocus;
+                return audio.requestAudioFocus(heldFocus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+            }
+            public void releaseFocus() { if (heldFocus != null) audio.abandonAudioFocusRequest(heldFocus); heldFocus=null; }
+            public boolean musicActive() { return audio.isMusicActive(); }
+            public boolean fixedVolume() { return audio.isVolumeFixed(); }
+            public int volume() { return audio.getStreamVolume(AudioManager.STREAM_MUSIC); }
+            public int maxVolume() { return audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC); }
+            public String route() { return mediaRoute(); }
+            public void setVolume(int value) { audio.setStreamVolume(AudioManager.STREAM_MUSIC,value,0); }
+            public boolean speak(String id, String text) {
+                Bundle params = new Bundle();
+                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME,1.0f);
+                return tts.speak(text,TextToSpeech.QUEUE_FLUSH,params,id) != TextToSpeech.ERROR;
+            }
+            public void stop() { if (tts != null) tts.stop(); }
+            public void note(String text) { getSharedPreferences(PREFS,0).edit().putString("announcementAudio",text).apply(); }
+        }, (delay,action) -> main.postDelayed(action,delay), new AnnouncementAudio.Listener() {
+            public void started(String id) {
+                if (id.equals(activeUtterance)) {
+                    speechStatus("Speaking score");
+                    if (activeScore != null) ack(activeScore,"speaking");
+                }
+            }
+            public void finished(String id, String result) {
+                if (!id.equals(activeUtterance)) return;
+                if (activeScore != null) ack(activeScore,result);
+                speechStatus(result.equals("spoken") ? "Score spoken" : result.equals("interrupted") ?
+                    "Announcement interrupted. Tap Speak to repeat." : "Speech failed. Check the audio status and voice settings.");
+                activeUtterance=""; activeScore=null;
+            }
+        });
         tts = new TextToSpeech(this, result -> main.post(() -> {
             if (destroyed) return;
             if (result != TextToSpeech.SUCCESS || tts.setLanguage(Locale.US) < 0) { speechStatus("English speech unavailable. Install an English voice in Android text-to-speech settings."); return; }
@@ -63,7 +104,7 @@ public class AnnouncerService extends Service {
                 }
             }
             if (offline == null || tts.setVoice(offline) != TextToSpeech.SUCCESS) { speechStatus("Install an offline English voice in Android text-to-speech settings, then restart the announcer."); return; }
-            tts.setAudioAttributes(attrs); tts.setSpeechRate(0.85f); ttsReady = true; speechStatus("Offline English voice ready");
+            tts.setAudioAttributes(speechAttributes); tts.setSpeechRate(0.85f); ttsReady = true; speechStatus("Offline English voice ready");
         }));
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             public void onStart(String id) {}
@@ -176,6 +217,8 @@ public class AnnouncerService extends Service {
     }
     private String controlMedia(String action) {
         if (audio == null) throw new IllegalStateException("Audio unavailable");
+        // Apply music-button changes to the restored music level, not a temporary boost.
+        if (!activeUtterance.isEmpty()) cancelSpeech();
         if (action.equals("volumeUp") || action.equals("volumeDown")) {
             if (audio.isVolumeFixed()) return "Volume fixed on phone";
             audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,
@@ -191,28 +234,30 @@ public class AnnouncerService extends Service {
         return action.equals("next") ? "Next track sent" : action.equals("previous") ? "Previous track sent" : "Play / pause sent";
     }
     private void speak(String text, Score score) {
-        cancelSpeech();
-        if (!ttsReady) { speechStatus("Voice not ready. Wait, then tap Speak again."); if (score != null) ack(score, "error"); return; }
-        if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            speechStatus("Audio is busy. Tap Speak to retry."); if (score != null) ack(score, "error"); return;
-        }
+        if (!ttsReady) { cancelSpeech(); speechStatus("Voice not ready. Wait, then tap Speak again."); if (score != null) ack(score, "error"); return; }
+        if (activeScore != null) ack(activeScore,"interrupted");
         activeUtterance = UUID.randomUUID().toString(); activeScore = score;
-        speechStatus("Speaking: " + text);
-        int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), activeUtterance);
-        if (result == TextToSpeech.ERROR) finishSpeech(activeUtterance, false);
-        else if (score != null) ack(score, "speaking");
+        SharedPreferences prefs=getSharedPreferences(PREFS,0);
+        speechStatus("Preparing: " + text);
+        announcements.start(activeUtterance,text,new AnnouncementAudio.Options(
+            prefs.getBoolean("announcementBoost",false), prefs.getInt("announcementVolume",75), prefs.getInt("announcementGap",500)));
+        if (score != null) ack(score,"speaking");
     }
     private void cancelSpeech() {
         if (activeScore != null) ack(activeScore, "interrupted");
         activeUtterance = ""; activeScore = null;
-        if (tts != null) tts.stop();
-        if (audio != null && focus != null) audio.abandonAudioFocusRequest(focus);
+        if (announcements != null) announcements.cancel();
     }
     private void finishSpeech(String id, boolean ok) {
-        if (destroyed || !id.equals(activeUtterance)) return;
-        if (activeScore != null) ack(activeScore, ok ? "spoken" : "error");
-        speechStatus(ok ? "Score spoken" : "Speech failed. Check your Android voice settings.");
-        activeUtterance = ""; activeScore = null; audio.abandonAudioFocusRequest(focus);
+        if (!destroyed && announcements != null) announcements.completed(id,ok);
+    }
+    private String mediaRoute() {
+        List<AudioDeviceInfo> devices = Build.VERSION.SDK_INT >= 33 ? audio.getAudioDevicesForAttributes(speechAttributes) :
+            Arrays.asList(audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS));
+        List<String> keys=new ArrayList<>();
+        for (AudioDeviceInfo device : devices) keys.add(device.getType() + ":" + device.getId());
+        Collections.sort(keys);
+        return String.join(",",keys);
     }
     private void ack(Score s, String result) {
         try { send(new JSONObject().put("type","ack").put("session",s.session).put("sequence",s.sequence).put("status",result)); } catch (Exception ignored) {}
@@ -245,7 +290,9 @@ public class AnnouncerService extends Service {
             .addAction(new Notification.Action.Builder(null,"Stop",stop).build()).build();
     }
     @Override public void onDestroy() {
-        destroyed = true; running = false; main.removeCallbacksAndMessages(null); cancelSpeech(); detach();
+        destroyed = true; running = false; cancelSpeech();
+        if (announcements != null) announcements.close();
+        main.removeCallbacksAndMessages(null); detach();
         if (serviceApi != null) serviceApi.unregisterServiceConnectionListener(serviceListener);
         if (tts != null) tts.shutdown();
         getSharedPreferences(PREFS,0).edit().putString("connection","Stopped. Tap Start announcer before playing.").apply();

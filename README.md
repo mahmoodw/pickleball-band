@@ -2,17 +2,34 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Install both v0.1.5 packages for music controls.**
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Install the v0.1.6 phone APK for adjustable announcement volume. The v0.1.5 band app remains compatible.**
 
-**Device status:** the user reports the Notify connection, announcements and v0.1.4 band layout working. Version **0.1.5 adds a swipe-accessible music page**. The new layout has passed a browser approximation and both packages build successfully; swipe behavior and music-player responses still need checking on a physical Band 10 and Android phone.
+**Device status:** the user reports the Notify connection, announcements and band layout working. Version **0.1.6 adds temporary announcement-volume boosts and speaker-settling gaps**. Audio sequencing is covered by JVM tests and both packages build successfully; music-player pause behavior and Bluetooth timing need a physical-device check.
 
 The band keeps the game and undo history locally. The phone receives score snapshots and speaks using an offline English Android voice. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.5
+## Upgrade to v0.1.6
 
-Update the phone with `pickleball-phone-0.1.5.apk` and update the band through Notify using `pickleball-band-0.1.5.rpk`. Restart the phone announcer after updating. Both apps keep their package names and signing keys, and the saved-game format is unchanged. Update in place; uninstalling first may erase the saved game. An older phone APK still supports scoring, but the new music page will ask you to update it.
+Update the phone with `pickleball-phone-0.1.6.apk`, then restart the announcer. **Your v0.1.5 band RPK can stay installed.** A v0.1.6 RPK is also included for new installations, with the same band UI and protocol. Both apps retain their package names, signing keys and saved-game format. Update in place; uninstalling first may erase the saved game.
 
-On the band, **swipe left from the score page for music**, then swipe right or tap **Back to score** to return. **More → Music controls** also opens the page. The large **We won / They won** rally buttons remain 180 × 100 pixels. Undo, Speak, corrections and connection controls remain available.
+Open **Announcement volume** on the phone, enable **Raise volume for announcements**, choose a volume and use **Save & test**. The setting starts disabled so existing installations keep their normal media level until configured. Suggested starting values are **75%** and a **500 ms** speaker-settling gap.
+
+## Announcement volume
+
+The normal phone media slider controls music between announcements. When the new option is enabled, Pickleball:
+
+1. Requests a temporary music pause and waits up to 1.5 seconds for Android to report no active music playback.
+2. Waits the chosen gap to let buffered speaker audio drain.
+3. Raises media volume to the selected level only if it is higher than the current level, then waits the gap again before speaking.
+4. Restores the original media volume after speech, waits the gap, then releases audio focus so the player can resume.
+
+The gap is adjustable from **250 to 1500 ms**. Increase it if the Bluetooth speaker changes level slowly. It controls timing, not the strength of Android's music ducking. Boosted calls request a pause because raising shared volume while music is merely ducked would also amplify that music. If music stays active or resumes before speech starts, the app skips the boost and reports that in the phone's audio status. Player cooperation and Bluetooth hardware timing still matter; the app cannot guarantee silence from a player that ignores audio focus.
+
+Speech explicitly uses TTS volume **1.0**, Android's default maximum relative to the selected media level. The announcement percentage refers to the media slider, not a percentage increase in perceived loudness. Zero media volume stays muted; fixed-volume outputs are not changed. Bluetooth absolute volume normally links the phone and speaker controls. A separate hardware gain knob is not adjusted by the app.
+
+Completion, cancellation, TTS failures, a missing completion callback and normal service shutdown restore the temporary level before releasing focus. Rapid new scores replace pending calls and do not reuse an elevated level as the music baseline. A manual volume change is preserved; a detected output change cancels speech and avoids writing the old speaker's volume into the new output. Force-stopping or killing the process can prevent cleanup, and an output disconnected while boosted may retain its last level. Music buttons interrupt an active call and operate after its local music level is restored.
+
+With the option disabled, the app keeps the shared media volume and requests the original music-ducking behavior.
 
 ## Music controls
 
@@ -21,7 +38,7 @@ On the band, **swipe left from the score page for music**, then swipe right or t
 3. Swipe left on the band's score page. Use **Play / Pause**, **Previous**, **Next**, and the media-volume **− / +** buttons.
 4. Swipe right or tap **Back to score** to continue scoring. The game and undo history are preserved.
 
-The phone sends standard Android media-key events to the active or most recently used media session. Player support varies; Previous may restart the current track. The band reports **control sent**, which confirms dispatch on the phone, not that playback changed. This version does not display track titles or playback state. It needs no notification-access permission or Tasker setup. Volume changes affect the phone's media stream, including score announcements, and some audio outputs have fixed volume.
+The phone sends standard Android media-key events to the active or most recently used media session. Player support varies; Previous may restart the current track. The band reports **control sent**, which confirms dispatch on the phone, not that playback changed. This version does not display track titles or playback state. It needs no notification-access permission or Tasker setup. The music-page volume buttons adjust the normal phone media level. The optional announcement setting temporarily raises it during calls; some audio outputs have fixed volume.
 
 Music commands use their own acknowledgments and sequence numbers. Duplicate messages cannot toggle playback twice within the same connection, and offline commands are not queued or automatically retried. Swiping uses Vela's native horizontal pager, with a drag guard to prevent rally taps during a swipe. A native band workout still prevents opening Pickleball; this release adds music controls inside Pickleball only.
 
@@ -44,14 +61,14 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.5.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.5.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.6.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.6.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
 5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Voice settings** to install an offline English voice and then stop/start the announcer.
 6. Open **Pickleball** on the band. Start a new game, choosing singles/doubles, who serves first and 11/15/21 points. If offline, tap **More → Phone connection → Reconnect** and wait for the displayed diagnosis. Use **Back**, wait for **Phone connected**, then tap **Speak**. The phone should read the displayed call; the band should eventually say **Score spoken**.
 
-The announcer has an ongoing notification while active. Leave it running during play, then use **Stop announcer** or the notification's **Stop** action. Speech uses media volume and the phone's selected audio output, including connected headphones or speakers.
+The announcer has an ongoing notification while active. Leave it running during play, then use **Stop announcer** or the notification's **Stop** action. Speech uses the phone's selected media output, including connected headphones or speakers. The Announcement volume setting can temporarily raise its level while music pauses.
 
 ## During a game
 
@@ -74,6 +91,7 @@ Each update is saved on the band before transmission. Updates made offline stay 
 4. Test Undo and a correction affecting both points and server.
 5. Disconnect the band, record a rally, reconnect and verify the current score syncs silently. Tap Speak to announce it.
 6. Start a track on the phone, swipe left on the band, and test play/pause, next/previous and volume. Repeat with the phone locked. Swipe back across the rally buttons and confirm that no point was added.
+7. With music playing at your usual volume, enable the announcement-volume setting and use Save & test. Confirm music pauses, the score is louder, and the original music level returns afterward. Adjust the speaker gap if needed.
 
 If it fails, tap **Copy connection details** on the phone and include that text plus the band's **Phone link** status and diagnosis in a report. It includes the app/Android/Notify versions, whether Notify's Interconnect service is visible, connection/voice errors, the last message-send result and whether the phone has received a band message. It excludes band identifiers and keys. “Notify listener ready” means Notify accepted listener registration; “Band app connected” means a score packet was received and validated. A send accepted by Notify alone does not confirm delivery to the band. These details distinguish a missing Notify service, authorization failure, missing band communication and unavailable TTS. **Score spoken** means Android's speech engine reported completion; it cannot establish that the phone's volume was audible on court. Android battery management may need adjustment if the announcer stops while the phone is locked.
 
@@ -130,6 +148,15 @@ The music protocol has 24 checks for session validation, duplicate and out-of-or
 "$PICKLEBALL_JDK/bin/java" -cp build/java-tests:/path/to/json-20240303.jar com.wmahmood.pickleball.MediaRemoteTest
 ```
 
+The announcement audio controller has 43 checks for pause/boost/speech/restore ordering, Bluetooth settling delays, players that ignore pause requests, replacements, interruption, timeouts, TTS failures, manual volume changes, output changes and service shutdown:
+
+```bash
+"$PICKLEBALL_JDK/bin/javac" -d build/audio-tests android/src/com/wmahmood/pickleball/AnnouncementAudio.java tests/AnnouncementAudioTest.java
+"$PICKLEBALL_JDK/bin/java" -cp build/audio-tests com.wmahmood.pickleball.AnnouncementAudioTest
+```
+
+These tests use an explicit clock and simulated audio state. They do not establish a physical speaker's latency or a particular player's audio-focus behavior.
+
 After fetching the SDK, run `python3 -m unittest discover -s tests -p 'test_*.py'` to verify the provider library and Android package visibility agree. No real-device connection is emulated by these tests.
 
 To regenerate the browser layout preview, run `node scripts/preview_band.cjs` with Playwright and its Chromium browser installed. If Playwright is installed separately, set `PICKLEBALL_PLAYWRIGHT` to its module path. The script writes the preview PNG in `docs/`, an HTML copy in `build/`, and reports text overflow outside the intentional connection-details scroll area. It does not emulate Vela rendering.
@@ -139,6 +166,9 @@ To regenerate the browser layout preview, run `node scripts/preview_band.cjs` wi
 - [Xiaomi Smart Band 10 display specifications](https://www.mi.com/global/product/xiaomi-smart-band-10/specs/)
 - [Xiaomi Interconnect documentation and SDK/demo download](https://iot.mi.com/vela/quickapp/en/features/network/interconnect.html)
 - [Notify's custom Interconnect SDK, Android demo and integration instructions](https://www.mibandnotify.com/xiaomi-mi-band/notify-xms-app-instructions.php)
+- [Android audio focus](https://developer.android.com/media/optimize/audio-focus)
+- [Android TTS volume](https://developer.android.com/reference/android/speech/tts/TextToSpeech.Engine#KEY_PARAM_VOLUME)
+- [Android Bluetooth absolute volume](https://source.android.com/docs/core/connect/bluetooth/services#absolute-volume-control)
 - [Vela native swiper documentation](https://iot.mi.com/vela/quickapp/en/components/container/swiper.html)
 - [Xiaomi Vela app documentation](https://iot.mi.com/vela/quickapp/en/)
 - [Notify wearable apps](https://www.mibandnotify.com/xiaomi-mi-band/notify-app.php)

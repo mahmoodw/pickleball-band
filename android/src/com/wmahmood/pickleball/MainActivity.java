@@ -11,7 +11,7 @@ import com.xiaomi.xms.wearable.auth.Permission;
 import com.xiaomi.xms.wearable.node.Node;
 
 public class MainActivity extends Activity {
-    private TextView score, details, connection, speech, music, feedback;
+    private TextView score, details, connection, speech, music, announcementAudio, feedback;
     private final BandSelection selection = new BandSelection();
     private long accessRequest;
     private boolean accessPending;
@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
         connection = label(body,"",15,Color.rgb(164,183,172));
         speech = label(body,"",15,Color.rgb(164,183,172));
         music = label(body,"",15,Color.rgb(164,183,172));
+        announcementAudio = label(body,"",15,Color.rgb(164,183,172));
         button(body,"Start announcer",() -> {
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1);
             startForegroundService(new Intent(this,AnnouncerService.class)); render();
@@ -43,6 +44,7 @@ public class MainActivity extends Activity {
             if (!AnnouncerService.running) { feedback.setText("Start the announcer first, then test the voice."); return; }
             startService(new Intent(this,AnnouncerService.class).setAction("test"));
         });
+        button(body,"Announcement volume",this::announcementSettings);
         button(body,"Select band",this::selectBand);
         button(body,"Open Notify",() -> {
             Intent launch = NotifyBridge.launchIntent(this);
@@ -56,7 +58,7 @@ public class MainActivity extends Activity {
         button(body,"Request band access (if needed)",this::grantAccess);
         button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Audio follows your phone's media volume and output.\n\nVersion 0.1.5. Swipe left on the band score page for music controls. Start playback in your phone music app first. Use More for corrections, new games and phone connection.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to make calls louder while music pauses. Audio follows your phone's media output.\n\nVersion 0.1.6. Swipe left on the band score page for music controls. Start playback in your phone music app first. Use More for corrections, new games and phone connection.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;
@@ -72,6 +74,51 @@ public class MainActivity extends Activity {
         connection.setText(AnnouncerService.running ? p.getString("connection","Connecting...") : "Announcer stopped");
         speech.setText(p.getString("speech","Use Test phone voice before your first game."));
         music.setText("Music: " + (AnnouncerService.running ? p.getString("media","Start music on your phone, then swipe left on the band's score page.") : "Start the announcer to enable band controls."));
+        announcementAudio.setText("Announcement volume: " + (p.getBoolean("announcementBoost",false) ?
+            p.getInt("announcementVolume",75) + "% when the normal level is lower; music pauses" : "Same as music") +
+            (AnnouncerService.running ? "\n" + p.getString("announcementAudio","Ready to test") : ""));
+    }
+    private void announcementSettings() {
+        SharedPreferences prefs=getSharedPreferences(AnnouncerService.PREFS,0);
+        LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(20),dp(12),dp(20),dp(12));
+        form.setBackgroundColor(Color.rgb(7,21,16));
+        Switch boost=new Switch(this); boost.setText("Raise volume for announcements"); boost.setTextColor(Color.WHITE);
+        boost.setChecked(prefs.getBoolean("announcementBoost",false)); form.addView(boost);
+        label(form,"Music is asked to pause first. The normal volume returns before music resumes. If music keeps playing, the volume boost is skipped.",14,Color.rgb(164,183,172));
+        TextView volumeLabel=label(form,"",17,Color.WHITE);
+        SeekBar volume=new SeekBar(this); volume.setMax(16);
+        volume.setProgress((Math.max(20,Math.min(100,prefs.getInt("announcementVolume",75)))-20)/5);
+        form.addView(volume,new LinearLayout.LayoutParams(-1,dp(48)));
+        TextView gapLabel=label(form,"",17,Color.WHITE);
+        SeekBar gap=new SeekBar(this); gap.setMax(5);
+        gap.setProgress(Math.max(0,Math.min(5,prefs.getInt("announcementGap",500)/250-1)));
+        form.addView(gap,new LinearLayout.LayoutParams(-1,dp(48)));
+        Runnable labels=() -> {
+            volumeLabel.setText("Announcement volume: " + (20+volume.getProgress()*5) + "%");
+            gapLabel.setText("Speaker settling gap: " + ((gap.getProgress()+1)*250) + " ms");
+            volume.setEnabled(boost.isChecked()); gap.setEnabled(boost.isChecked());
+        };
+        SeekBar.OnSeekBarChangeListener changes=new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar bar,int value,boolean fromUser) { labels.run(); }
+            public void onStartTrackingTouch(SeekBar bar) {}
+            public void onStopTrackingTouch(SeekBar bar) {}
+        };
+        volume.setOnSeekBarChangeListener(changes); gap.setOnSeekBarChangeListener(changes);
+        boost.setOnCheckedChangeListener((button,checked) -> labels.run()); labels.run();
+        label(form,"Increase the gap if your Bluetooth speaker changes volume slowly. Media stays muted if its volume is zero. A level already above your selection is left alone.",14,Color.rgb(164,183,172));
+        Runnable save=() -> {
+            prefs.edit().putBoolean("announcementBoost",boost.isChecked()).putInt("announcementVolume",20+volume.getProgress()*5)
+                .putInt("announcementGap",(gap.getProgress()+1)*250).apply();
+            render();
+        };
+        ScrollView scroll=new ScrollView(this); scroll.addView(form);
+        new AlertDialog.Builder(this).setTitle("Announcement volume").setView(scroll)
+            .setPositiveButton("Save",(dialog,which) -> save.run())
+            .setNeutralButton("Save & test",(dialog,which) -> {
+                save.run();
+                if (AnnouncerService.running) startService(new Intent(this,AnnouncerService.class).setAction("test"));
+                else feedback.setText("Settings saved. Start the announcer, then tap Test phone voice.");
+            }).setNegativeButton("Cancel",null).show();
     }
     private void selectBand() {
         if (NotifyBridge.availablePackage(this).isEmpty()) { feedback.setText(NotifyBridge.missingMessage(this)); return; }
@@ -128,7 +175,7 @@ public class MainActivity extends Activity {
     }
     private void copyDiagnostics() {
         SharedPreferences p=getSharedPreferences(AnnouncerService.PREFS,0);
-        StringBuilder text=new StringBuilder("Pickleball 0.1.5 / Android API ").append(Build.VERSION.SDK_INT);
+        StringBuilder text=new StringBuilder("Pickleball 0.1.6 / Android API ").append(Build.VERSION.SDK_INT);
         for (String name : NotifyBridge.PACKAGES) {
             try { text.append("\n").append(name).append(" ").append(getPackageManager().getPackageInfo(name,0).versionName); }
             catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
@@ -138,6 +185,10 @@ public class MainActivity extends Activity {
         text.append("\nConnection: ").append(p.getString("connection","Not started"));
         text.append("\nVoice: ").append(p.getString("speech","Not started"));
         text.append("\nMusic: ").append(p.getString("media","No controls sent"));
+        text.append("\nAnnouncement boost: ").append(p.getBoolean("announcementBoost",false));
+        text.append("\nAnnouncement volume: ").append(p.getInt("announcementVolume",75)).append("%");
+        text.append("\nSpeaker settling gap: ").append(p.getInt("announcementGap",500)).append(" ms");
+        text.append("\nAnnouncement audio: ").append(p.getString("announcementAudio","Not started"));
         text.append("\nSelection: ").append(selection.status());
         text.append("\nBand saved: ").append(p.contains("selectedNode"));
         String selectedId=p.getString("selectedNode",null);
