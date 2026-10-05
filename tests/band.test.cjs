@@ -27,8 +27,9 @@ function harness(saved = '', failWrite = false) {
   page.$element = () => ({swipeTo: ({index}) => page.pageChanged({index})});
   page.onInit();
   const hello = (mediaVersion = 1) => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge',mediaVersion})});
+  const settle = () => { now += 400; page.pageTouchStart({touches:[{clientX:106,clientY:260}]}); };
   return {page,conn,sent,requests,writes,hello,timers,intervals,diagnoses,makeConnection,
-    replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls, advance: ms => { now += ms; }};
+    replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls, settle, advance: ms => { now += ms; }};
 }
 test('band persists before broadcasting, correction is one atomic update', () => {
   const h=harness(); h.page.startGame(); h.hello();
@@ -138,24 +139,30 @@ test('retry works without optional diagnosis support and offline heartbeat retri
   for (const tick of h.intervals.values()) tick();
   assert.equal(h.sent.length,connectedCount);
 });
-test('secondary controls remain reachable through More without changing the game', () => {
+test('score opens in the middle and options keep the game across correction, connection and setup', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.weWon();
   const saved=h.writes.at(-1), writes=h.writes.length;
-  h.page.more(); assert.equal(h.page.screen,'more');
+  assert.equal(h.page.pageIndex,1);
+  h.page.pageChanged({index:0}); h.settle();
+  assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,0);
   h.page.edit(); assert.equal(h.page.screen,'edit');
-  h.page.back(); assert.equal(h.page.screen,'game');
-  h.page.more(); h.page.connectionSettings();
+  h.page.back(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,1);
+  h.page.pageChanged({index:0}); h.settle(); h.page.connectionSettings();
   assert.equal(h.page.screen,'connection');
-  h.page.connectionBack(); assert.equal(h.page.screen,'more');
+  h.page.connectionBack(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,0);
   h.page.settings(); assert.equal(h.page.screen,'new');
-  h.page.back(); assert.equal(h.page.screen,'game');
+  h.page.back(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,1);
   assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
   assert.equal(h.writes.at(-1),saved);
+  h.page.pageChanged({index:0}); h.settle(); h.page.edit(); h.page.usPlus(); h.page.saveEdit();
+  assert.equal(h.page.pageIndex,1); assert.equal(h.page.us,2);
+  h.page.pageChanged({index:0}); h.settle(); h.page.settings(); h.page.startGame();
+  assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,1); assert.equal(h.page.us,0);
 });
 test('music controls and their acknowledgments do not mutate or acknowledge the score', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
   h.page.weWon(); const score=h.sent.at(-1), writes=h.writes.length;
-  h.page.showMusic(); h.page.musicToggle(); const music=h.sent.at(-1);
+  h.page.showMusic(); h.settle(); h.page.musicToggle(); const music=h.sent.at(-1);
   assert.equal(music.type,'media'); assert.equal(music.action,'toggle');
   assert.equal(music.challenge,'test-challenge');
   assert.equal(h.page.musicBusy,true); const count=h.sent.length;
@@ -165,26 +172,28 @@ test('music controls and their acknowledgments do not mutate or acknowledge the 
   assert.equal(h.page.phoneStatus,'Sending score...');
   h.conn.onmessage({data:{type:'ack',session:score.session,sequence:score.sequence,status:'spoken'}});
   assert.equal(h.page.phoneStatus,'Score spoken');
-  h.page.showScore(); assert.equal(h.page.pageIndex,0);
+  h.page.showScore(); assert.equal(h.page.pageIndex,1);
   assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
 });
-test('swiping across a rally button cannot score, undo or speak', () => {
+test('swiping either way cannot score or activate a page button on release', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
   const count=h.sent.length;
-  h.page.pageTouchStart({touches:[{clientX:150,clientY:200}]});
-  h.page.pageTouchMove({touches:[{clientX:60,clientY:202}]});
-  h.page.pageTouchEnd();
-  h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
-  assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
-  h.page.pageChanged({index:1}); h.advance(400);
-  h.page.pageTouchStart({touches:[{clientX:90,clientY:200}]});
-  h.page.weWon(); assert.equal(h.writes.length,0);
-  h.page.showScore(); h.advance(400);
-  h.page.pageTouchStart({touches:[{clientX:90,clientY:200}]});
+  for (const side of [0,2]) {
+    h.page.pageChanged({index:1}); h.settle();
+    h.page.pageTouchMove({touches:[{clientX:side===0 ? 200 : 10,clientY:260}]});
+    h.page.pageTouchEnd(); h.page.pageChanged({index:side});
+    h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
+    h.page.edit(); h.page.settings(); h.page.connectionSettings(); h.page.musicToggle();
+    assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,side);
+    assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
+    h.settle(); h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
+    assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
+  }
+  h.page.showScore(); h.settle();
   h.page.weWon(); assert.equal(h.page.us,1);
 });
 test('music is never queued offline or retried after timeout, and old phones get an upgrade hint', () => {
-  const h=harness(JSON.stringify(rules.create())); h.page.showMusic(); h.page.musicNext();
+  const h=harness(JSON.stringify(rules.create())); h.page.showMusic(); h.settle(); h.page.musicNext();
   assert.ok(h.sent.every(p=>p.type==='hello'));
   h.hello(0); h.page.musicNext();
   assert.equal(h.page.musicStatus,'Update phone app for music');
@@ -200,7 +209,7 @@ test('music is never queued offline or retried after timeout, and old phones get
   assert.equal(h.sent.filter(p=>p.type==='media').length,1);
 });
 test('late music replies and send failures cannot replace a newer command result', () => {
-  const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.showMusic(); h.page.musicPrevious();
+  const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.showMusic(); h.settle(); h.page.musicPrevious();
   const old=h.sent.at(-1), oldSend=h.requests.at(-1);
   const ack=(packet,message)=>h.conn.onmessage({data:{type:'mediaAck',session:packet.session,sequence:packet.sequence,status:'sent',message}});
   ack(old,'Previous track sent'); h.page.musicLouder(); const next=h.sent.at(-1);

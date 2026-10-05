@@ -6,6 +6,18 @@
     </div>
     <swiper if="{{screen === 'game'}}" id="gamePages" class="gamePages" index="{{pageIndex}}" loop="false" indicator="false" onchange="pageChanged" ontouchstart="pageTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd">
     <div class="slide">
+    <div class="panel">
+      <text class="title">Game options</text>
+      <text class="menuCall">{{scoreCall}}</text>
+      <div class="button" onclick="edit"><text class="buttonText">Correct score</text></div>
+      <div class="button" onclick="showMusic"><text class="buttonText">Music controls</text></div>
+      <div class="button" onclick="connectionSettings"><text class="buttonText">Phone connection</text></div>
+      <div class="button" onclick="settings"><text class="buttonText">New game</text></div>
+      <div class="button" onclick="showScore"><text class="buttonText">Back to score</text></div>
+      <text class="musicHint">Swipe left for score</text>
+    </div>
+    </div>
+    <div class="slide">
     <div class="panel gamePanel">
       <div class="row scoreLabels"><text class="teamLabel">US</text><text class="teamLabel">THEM</text></div>
       <div class="row scores"><text class="score">{{us}}</text><text class="score">{{them}}</text></div>
@@ -18,12 +30,12 @@
         <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
       </div>
       <div class="row gameActions">
-        <div class="smallButton third" onclick="undo"><text class="smallText">Undo</text></div>
-        <div class="smallButton third" onclick="repeat"><text class="smallText">Speak</text></div>
-        <div class="smallButton third" onclick="more"><text class="smallText">More</text></div>
+        <div class="scoreAction" onclick="undo"><text class="scoreActionText">Undo</text></div>
+        <div class="scoreAction" onclick="repeat"><text class="scoreActionText">Speak</text></div>
       </div>
       <text class="gameFoot">{{notice}}</text>
-      <text class="pageHint">Swipe left for music</text>
+      <text class="pageHint">Swipe right: options</text>
+      <text class="pageHint">Swipe left: music</text>
     </div>
     </div>
     <div class="slide">
@@ -45,15 +57,6 @@
     </div>
     </div>
     </swiper>
-    <div if="{{screen === 'more'}}" class="panel">
-      <text class="title">Game options</text>
-      <text class="menuCall">{{scoreCall}}</text>
-      <div class="button" onclick="edit"><text class="buttonText">Correct score</text></div>
-      <div class="button" onclick="showMusic"><text class="buttonText">Music controls</text></div>
-      <div class="button" onclick="connectionSettings"><text class="buttonText">Phone connection</text></div>
-      <div class="button" onclick="settings"><text class="buttonText">New game</text></div>
-      <div class="button" onclick="back"><text class="buttonText">Back to game</text></div>
-    </div>
     <div if="{{screen === 'edit'}}" class="panel">
       <text class="title">Correct score</text>
       <text class="hint">Save to announce</text>
@@ -115,10 +118,10 @@ let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUnt
 export default {
   private: {
     screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '',
-    phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', notice: '', editUs: 0, editThem: 0,
+    phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', connectionReturnIndex: 1, notice: '', editUs: 0, editThem: 0,
     editServing: 'Us', editServer: 2, isDoubles: true,
     newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: '',
-    pageIndex: 0, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false
+    pageIndex: 1, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false
   },
   onInit() {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
@@ -154,10 +157,11 @@ export default {
   connectionSettings() {
     if (this.screen === 'game' && !this.canTap()) return;
     this.connectionReturn = this.screen;
+    this.connectionReturnIndex = this.pageIndex;
     this.screen = 'connection';
     this.reconnect();
   },
-  connectionBack() { this.screen = this.connectionReturn; },
+  connectionBack() { this.pageIndex = this.connectionReturnIndex; this.screen = this.connectionReturn; },
   reconnect() { this.refreshConnection(true); },
   refreshConnection(diagnose) {
     // Vela owns the physical connection. Reacquire its singleton and retry our
@@ -239,13 +243,18 @@ export default {
   },
   pageTouchEnd() { if (dragged) ignoreTapUntil = Date.now() + 350; },
   canTap() { return !dragged && Date.now() >= ignoreTapUntil; },
-  canScoreTap() { return this.pageIndex === 0 && this.canTap(); },
-  pageChanged(event) { this.pageIndex = event.index === 1 ? 1 : 0; ignoreTapUntil = Date.now() + 350; },
-  showMusic() { if (!busy) { this.pageIndex = 1; this.screen = 'game'; } },
-  showScore() {
-    if (!this.canTap()) return;
-    this.pageIndex = 0;
-    this.$element('gamePages').swipeTo({index: 0});
+  canScoreTap() { return this.screen === 'game' && this.pageIndex === 1 && this.canTap(); },
+  pageChanged(event) {
+    if (event.index !== 0 && event.index !== 1 && event.index !== 2) return;
+    this.pageIndex = event.index; ignoreTapUntil = Date.now() + 350;
+  },
+  showMusic() { this.goToPage(2); },
+  showScore() { this.goToPage(1); },
+  goToPage(index) {
+    if (!this.canTap() || busy) return;
+    this.pageIndex = index;
+    if (this.screen === 'game') this.$element('gamePages').swipeTo({index});
+    else this.screen = 'game';
   },
   musicToggle() { this.sendMusic('toggle'); },
   musicPrevious() { this.sendMusic('previous'); },
@@ -253,7 +262,7 @@ export default {
   musicQuieter() { this.sendMusic('volumeDown'); },
   musicLouder() { this.sendMusic('volumeUp'); },
   sendMusic(action) {
-    if (!this.canTap() || this.musicBusy || busy) return;
+    if (this.screen !== 'game' || this.pageIndex !== 2 || !this.canTap() || this.musicBusy || busy) return;
     if (!challenge) { this.musicStatus = 'Phone offline - reconnect'; this.hello(); return; }
     if (!this.mediaAvailable) { this.musicStatus = 'Update phone app for music'; return; }
     const sent = ++mediaSequence, generation = linkGeneration;
@@ -310,7 +319,7 @@ export default {
     if (busy || next === game) return;
     busy = true;
     storage.set({key: 'pickleball.game.v1', value: JSON.stringify(next), success: () => {
-      game = next; busy = false; this.screen = 'game'; this.render();
+      game = next; busy = false; this.pageIndex = 1; this.screen = 'game'; this.render();
       try { vibrator.vibrate({mode: 'short'}); } catch (_) {}
       this.send(action);
     }, fail: () => { busy = false; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
@@ -320,7 +329,7 @@ export default {
   undo() { if (game && this.canScoreTap()) { if (!game.history.length) { this.notice = 'Nothing to undo'; return; } this.save(rules.undo(game), 'undo'); } },
   repeat() { if (game && !busy && this.canScoreTap()) this.send('repeat'); },
   edit() {
-    if (!game || busy) return;
+    if (!game || busy || !this.canTap()) return;
     draft = JSON.parse(JSON.stringify(game.state)); this.editUs = draft.scores[0]; this.editThem = draft.scores[1];
     this.editServing = draft.serving === 0 ? 'Us' : 'Them'; this.editServer = draft.server; this.screen = 'edit';
   },
@@ -334,24 +343,24 @@ export default {
     draft.scores = [this.editUs, this.editThem]; draft.serving = this.editServing === 'Us' ? 0 : 1;
     draft.server = this.editServer; this.save(rules.correct(game, draft), 'correct');
   },
-  more() { if (!busy && this.canTap()) this.screen = 'more'; },
-  settings() { if (!busy) { this.newWarning = 'Replaces this game and its undo history.'; this.screen = 'new'; } },
+  settings() { if (!busy && this.canTap()) { this.newWarning = 'Replaces this game and its undo history.'; this.screen = 'new'; } },
   toggleMode() { this.newMode = this.newMode === 'Doubles' ? 'Singles' : 'Doubles'; },
   toggleFirst() { this.newFirst = this.newFirst === 'Us' ? 'Them' : 'Us'; },
   toggleTarget() { this.newTarget = this.newTarget === 11 ? 15 : this.newTarget === 15 ? 21 : 11; },
   startGame() { this.save(rules.create(this.newMode.toLowerCase(), this.newFirst === 'Us' ? 0 : 1, this.newTarget), 'start'); },
-  back() { if (!busy) { this.pageIndex = 0; this.screen = 'game'; } }
+  back() { if (!busy) { this.pageIndex = 1; this.screen = 'game'; } }
 };
 </script>
 <style>
-/* Band 10: 212 × 520. The centered 180 × 448 panel leaves room for the
-   rounded display ends. Game content fits without scrolling or shrinking. */
+/* Band 10: 212 × 520. Rally controls span the straight-sided display area.
+   Headers, footers and secondary pages stay inset from the rounded ends. */
 .page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; align-items: center; justify-content: center; }
 .panel { width: 180px; height: 448px; flex-direction: column; align-items: center; justify-content: center; }
+.gamePanel { width: 212px; }
 .gamePages { width: 212px; height: 520px; }
 .slide { width: 212px; height: 520px; flex-direction: column; align-items: center; justify-content: center; }
-.gameFoot { width: 160px; height: 32px; font-size: 12px; line-height: 16px; color: #a4b7ac; text-align: center; lines: 2; }
-.pageHint { width: 150px; height: 16px; font-size: 10px; line-height: 14px; color: #a4b7ac; text-align: center; lines: 1; }
+.gameFoot { width: 160px; height: 16px; font-size: 11px; line-height: 14px; color: #a4b7ac; text-align: center; lines: 1; }
+.pageHint { width: 150px; height: 12px; font-size: 10px; line-height: 12px; color: #a4b7ac; text-align: center; lines: 1; }
 .musicStatus { width: 172px; height: 44px; font-size: 15px; line-height: 20px; color: #a4d7bf; text-align: center; lines: 2; }
 .musicPlay { width: 180px; height: 80px; margin-bottom: 8px; border-radius: 18px; align-items: center; justify-content: center; }
 .musicPlayText { width: 164px; font-size: 22px; line-height: 28px; color: #10240a; text-align: center; lines: 1; }
@@ -368,16 +377,17 @@ export default {
 .scores { height: 58px; }
 .score { width: 86px; height: 58px; font-size: 48px; line-height: 56px; color: #ffffff; text-align: center; lines: 1; }
 .serve { width: 180px; height: 22px; font-size: 14px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
-.status { width: 172px; height: 32px; font-size: 12px; line-height: 15px; color: #a4d7bf; text-align: center; lines: 2; }
-.rallyButton { width: 180px; height: 100px; margin-bottom: 8px; border-radius: 18px; flex-direction: column; align-items: center; justify-content: center; }
+.status { width: 172px; height: 28px; font-size: 12px; line-height: 14px; color: #a4d7bf; text-align: center; lines: 2; }
+.rallyButton { width: 212px; height: 100px; margin-bottom: 8px; border-radius: 18px; flex-direction: column; align-items: center; justify-content: center; }
 .ours { background-color: #baf75e; }
 .theirs { background-color: #285e4b; }
 .rallyTitle { width: 164px; height: 34px; font-size: 27px; line-height: 32px; color: #ffffff; text-align: center; lines: 1; }
 .rallyCaption { width: 164px; height: 20px; font-size: 15px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
 .oursText { color: #10240a; }
-.gameActions { height: 44px; margin-top: 8px; }
+.gameActions { width: 200px; height: 60px; margin-top: 4px; }
+.scoreAction { width: 96px; height: 60px; background-color: #20382c; border-radius: 16px; align-items: center; justify-content: center; }
+.scoreActionText { width: 88px; font-size: 20px; line-height: 26px; color: #ffffff; text-align: center; lines: 1; }
 .smallButton { height: 44px; background-color: #20382c; border-radius: 12px; align-items: center; justify-content: center; }
-.third { width: 56px; }
 .half { width: 86px; }
 .wide { width: 160px; }
 .smallText { font-size: 14px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
