@@ -64,6 +64,22 @@ test('offline scoring reconnects with a silent snapshot, never an old rally', ()
   assert.equal(h.sent.at(-1).state.scores[0],2);
   h.page.repeat(); assert.equal(h.sent.at(-1).action,'repeat');
 });
+test('band sends a turnover once and clears it for repeat, undo and reconnect', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  h.page.theyWon();
+  assert.equal(h.sent.at(-1).action,'rally');
+  assert.equal(h.sent.at(-1).turnover,true);
+  h.page.repeat(); assert.equal(h.sent.at(-1).turnover,false);
+  h.page.undo(); assert.equal(h.sent.at(-1).turnover,false);
+  h.page.reconnect();
+  h.page.theyWon(); // Offline turnover is saved, but never queued for speech.
+  h.hello();
+  assert.equal(h.sent.at(-1).action,'sync');
+  assert.equal(h.sent.at(-1).state.serving,1);
+  assert.equal(h.sent.at(-1).turnover,false);
+  h.page.theyWon(); // A point after reconnect must not inherit the turnover.
+  assert.equal(h.sent.at(-1).turnover,false);
+});
 test('stale speech acknowledgments cannot confirm a newer score', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
   h.page.weWon(); const old=h.sent.at(-1);

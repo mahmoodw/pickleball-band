@@ -69,7 +69,11 @@ function call(s) {
   return nums.join(' - ');
 }
 function packet(g, action, sequence, session) {
+  // Derive the event from this rally's saved predecessor, not the phone's last
+  // snapshot: intermediate packets may be missed. Sync/repeat never replay it.
+  const previous = g.history[g.history.length - 1];
+  const turnover = action === 'rally' && !!previous && previous.serving !== g.state.serving;
   return { protocol: 1, type: 'score', session: session, sequence: sequence, gameId: g.id,
-    revision: g.revision, action: action, state: copy(g.state) };
+    revision: g.revision, action: action, turnover: turnover, state: copy(g.state) };
 }
 module.exports = { create, restore, validState, validGame, winner, rally, undo, correct, call, packet };
