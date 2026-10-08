@@ -28,8 +28,9 @@ function harness(saved = '', failWrite = false) {
   page.onInit();
   const hello = (mediaVersion = 1) => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge',mediaVersion})});
   const settle = () => { now += 400; page.pageTouchStart({touches:[{clientX:106,clientY:260}]}); };
+  const visit = index => { page.pageChanged({index}); settle(); };
   return {page,conn,sent,requests,writes,hello,timers,intervals,diagnoses,makeConnection,
-    replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls, settle, advance: ms => { now += ms; }};
+    replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls, settle, visit, advance: ms => { now += ms; }};
 }
 test('band persists before broadcasting, correction is one atomic update', () => {
   const h=harness(); h.page.startGame(); h.hello();
@@ -37,7 +38,7 @@ test('band persists before broadcasting, correction is one atomic update', () =>
   h.page.weWon();
   assert.equal(h.sent.at(-1).action,'rally');
   assert.equal(JSON.parse(h.writes.at(-1)).state.scores[0],1);
-  h.page.edit(); h.page.usPlus(); h.page.switchServing();
+  h.visit(1); h.page.edit(); h.page.usPlus(); h.page.switchServing();
   const count=h.sent.length;
   assert.equal(h.sent.length,count);
   h.page.saveEdit();
@@ -53,6 +54,7 @@ test('storage failure leaves saved score and announcements unchanged', () => {
   assert.equal(h.page.us,0);
   assert.equal(h.sent.length,count);
   assert.equal(h.page.notice,'Save failed - try again');
+  assert.equal(h.page.rallyDetail,'Save failed');
 });
 test('offline scoring reconnects with a silent snapshot, never an old rally', () => {
   const h=harness(JSON.stringify(rules.create()));
@@ -62,15 +64,19 @@ test('offline scoring reconnects with a silent snapshot, never an old rally', ()
   h.hello();
   assert.equal(h.sent.at(-1).action,'sync');
   assert.equal(h.sent.at(-1).state.scores[0],2);
-  h.page.repeat(); assert.equal(h.sent.at(-1).action,'repeat');
+  h.visit(1); h.page.repeat(); assert.equal(h.sent.at(-1).action,'repeat');
 });
 test('band sends a turnover once and clears it for repeat, undo and reconnect', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
   h.page.theyWon();
   assert.equal(h.sent.at(-1).action,'rally');
   assert.equal(h.sent.at(-1).turnover,true);
-  h.page.repeat(); assert.equal(h.sent.at(-1).turnover,false);
+  assert.equal(h.page.rallyServe,'They serve'); assert.equal(h.page.rallyDetail,'Server 1');
+  h.visit(1); h.page.repeat(); assert.equal(h.sent.at(-1).turnover,false);
   h.page.undo(); assert.equal(h.sent.at(-1).turnover,false);
+  assert.equal(h.page.pageIndex,1);
+  assert.equal(h.page.rallyServe,'We serve'); assert.equal(h.page.rallyDetail,'Server 2');
+  h.visit(2);
   h.page.reconnect();
   h.page.theyWon(); // Offline turnover is saved, but never queued for speech.
   h.hello();
@@ -102,7 +108,7 @@ test('manual reconnect keeps score and undo history and resynchronizes silently'
   assert.equal(h.sent.at(-1).state.scores[0],1);
   assert.equal(h.writes.at(-1),saved);
   h.page.connectionBack(); assert.equal(h.page.screen,'game');
-  h.page.undo(); assert.equal(h.page.us,0);
+  h.visit(1); h.page.undo(); assert.equal(h.page.us,0);
 });
 test('resume reacquires connection and restarts one retry timer without resetting the game', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
@@ -155,25 +161,27 @@ test('retry works without optional diagnosis support and offline heartbeat retri
   for (const tick of h.intervals.values()) tick();
   assert.equal(h.sent.length,connectedCount);
 });
-test('score opens in the middle and options keep the game across correction, connection and setup', () => {
+test('play opens first and four pages keep the game across score, correction, connection and setup', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.weWon();
   const saved=h.writes.at(-1), writes=h.writes.length;
-  assert.equal(h.page.pageIndex,1);
-  h.page.pageChanged({index:0}); h.settle();
-  assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,0);
-  h.page.edit(); assert.equal(h.page.screen,'edit');
+  assert.equal(h.page.pageIndex,2);
+  h.visit(1); h.page.edit(); assert.equal(h.page.screen,'edit');
   h.page.back(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,1);
-  h.page.pageChanged({index:0}); h.settle(); h.page.connectionSettings();
+  h.visit(0);
+  assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,0);
+  h.page.connectionSettings();
   assert.equal(h.page.screen,'connection');
   h.page.connectionBack(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,0);
   h.page.settings(); assert.equal(h.page.screen,'new');
-  h.page.back(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,1);
+  h.page.back(); assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,0);
   assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
   assert.equal(h.writes.at(-1),saved);
-  h.page.pageChanged({index:0}); h.settle(); h.page.edit(); h.page.usPlus(); h.page.saveEdit();
+  h.visit(1); h.page.edit(); h.page.usPlus(); h.page.saveEdit();
   assert.equal(h.page.pageIndex,1); assert.equal(h.page.us,2);
-  h.page.pageChanged({index:0}); h.settle(); h.page.settings(); h.page.startGame();
-  assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,1); assert.equal(h.page.us,0);
+  h.visit(3); h.page.showRally(); h.settle();
+  assert.equal(h.page.pageIndex,2); assert.equal(h.page.us,2);
+  h.visit(0); h.page.settings(); h.page.startGame();
+  assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,2); assert.equal(h.page.us,0);
 });
 test('music controls and their acknowledgments do not mutate or acknowledge the score', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
@@ -191,22 +199,38 @@ test('music controls and their acknowledgments do not mutate or acknowledge the 
   h.page.showScore(); assert.equal(h.page.pageIndex,1);
   assert.equal(h.page.us,1); assert.equal(h.writes.length,writes);
 });
-test('swiping either way cannot score or activate a page button on release', () => {
+test('swiping between every adjacent page cannot record a rally or activate a button on release', () => {
   const h=harness(JSON.stringify(rules.create())); h.hello();
   const count=h.sent.length;
-  for (const side of [0,2]) {
-    h.page.pageChanged({index:1}); h.settle();
-    h.page.pageTouchMove({touches:[{clientX:side===0 ? 200 : 10,clientY:260}]});
+  for (const [from,side] of [[2,1],[1,0],[0,1],[1,2],[2,3],[3,2]]) {
+    h.visit(from);
+    h.page.pageTouchMove({touches:[{clientX:side<from ? 200 : 10,clientY:260}]});
     h.page.pageTouchEnd(); h.page.pageChanged({index:side});
     h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
     h.page.edit(); h.page.settings(); h.page.connectionSettings(); h.page.musicToggle();
     assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,side);
     assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
-    h.settle(); h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
-    assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
   }
-  h.page.showScore(); h.settle();
+  h.settle();
   h.page.weWon(); assert.equal(h.page.us,1);
+});
+test('rally, score and music controls only act on their own page', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  h.page.weWon();
+  for (const index of [0,1,2,3]) {
+    h.visit(index);
+    const writes=h.writes.length, sent=h.sent.length;
+    if (index!==2) { h.page.weWon(); h.page.theyWon(); }
+    if (index!==1) { h.page.undo(); h.page.repeat(); h.page.edit(); }
+    if (index!==3) h.page.musicToggle();
+    if (index!==0) h.page.settings();
+    assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,index);
+    assert.equal(h.writes.length,writes); assert.equal(h.sent.length,sent);
+  }
+  h.visit(1); h.page.undo();
+  assert.equal(h.page.us,0); assert.equal(h.page.pageIndex,1);
+  h.page.repeat(); assert.equal(h.sent.at(-1).action,'repeat');
+  h.page.pageChanged({index:4}); assert.equal(h.page.pageIndex,1);
 });
 test('music is never queued offline or retried after timeout, and old phones get an upgrade hint', () => {
   const h=harness(JSON.stringify(rules.create())); h.page.showMusic(); h.settle(); h.page.musicNext();

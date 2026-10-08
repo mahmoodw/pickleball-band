@@ -2,19 +2,21 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update both apps to v0.1.8 to hear “Turnover” before the score when the serving team changes.**
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Install the v0.1.9 band RPK for the new four-page layout and half-screen rally buttons. Your v0.1.8 phone app remains compatible.**
 
-**Device status:** the user reports the Notify connection, announcements and earlier band layout working. Version **0.1.8 adds turnover announcements**. Scoring, protocol and audio regression checks pass; the new spoken call still needs checking on the physical band/phone pair. The v0.1.7 layout and announcement-volume settings are retained.
+**Device status:** the user reports the Notify connection, announcements and earlier band layout working. Version **0.1.9 splits play and live-score controls into separate pages**. The 212 × 520 browser layout checks and navigation regressions pass; the new layout and swipe behavior still need checking on a physical Band 10.
 
 The band keeps the game and undo history locally. The phone receives score snapshots and speaks using an offline English Android voice. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.8
+## Upgrade to v0.1.9
 
-Install `pickleball-phone-0.1.8.apk` on the phone and update the band through Notify with `pickleball-band-0.1.8.rpk`. **Both updates are needed for turnover announcements.** Mixed versions still support ordinary score calls. Both apps retain their package names, signing keys and saved-game format. Update in place; uninstalling first may erase the saved game.
+Update the band through Notify with `pickleball-band-0.1.9.rpk`. **Your v0.1.8 phone APK can stay installed**, including turnover announcements and announcement-volume settings. The v0.1.9 APK updates the navigation instructions and is included for new installations. Both apps retain their package names, signing keys and saved-game format. Update in place; uninstalling first may erase the saved game.
 
 When a rally passes serve to the other team, the phone says **“Turnover” before the new score**. For example, losing serve at 4–2 on server 2 produces **“Turnover. Two. Four. One.”** In doubles this includes the opening 0–0–2 side-out; switching from server 1 to server 2 on the same team does not say turnover. Singles announces turnover whenever the serving team changes after a rally. The band marks the event in the score message, so the phone does not need to have received the preceding rally.
 
-The app opens on the center **score page**. **Swipe right for Game options**, including corrections, phone connection and a new game. **Swipe left for music**. Swipe back toward the score page or tap **Back to score**. The More button has been removed, leaving room for larger Undo and Speak buttons.
+The app opens on **Play**, with We won covering the top half and They won covering the bottom half. The serving team and server number appear over the center seam. **Swipe right for Live score**, with the running scores, Undo, Speak and Correct. **Swipe right again for Settings**, with Phone connection and New game. **Swipe left from Play for Music**. Settings no longer has a music shortcut.
+
+The page order is **Settings ↔ Live score ↔ Play ↔ Music**. Swipe left from Live score to resume play, or use **Back to play** in Settings/Music. Undo and saved corrections stay on Live score; starting a new game opens Play.
 
 Open **Announcement volume** on the phone, enable **Raise volume for announcements**, choose a volume and use **Save & test**. The setting starts disabled so existing installations keep their normal media level until configured. Suggested starting values are **75%** and a **500 ms** speaker-settling gap.
 
@@ -39,8 +41,8 @@ With the option disabled, the app keeps the shared media volume and requests the
 
 1. Keep Notify connected and the Pickleball phone announcer running.
 2. Start music or a podcast in your preferred Android player.
-3. Swipe left on the band's score page. Use **Play / Pause**, **Previous**, **Next**, and the media-volume **− / +** buttons.
-4. Swipe right or tap **Back to score** to continue scoring. The game and undo history are preserved.
+3. Swipe left on the band's Play page. Use **Play / Pause**, **Previous**, **Next**, and the media-volume **− / +** buttons.
+4. Swipe right or tap **Back to play** to continue scoring. The game and undo history are preserved.
 
 The phone sends standard Android media-key events to the active or most recently used media session. Player support varies; Previous may restart the current track. The band reports **control sent**, which confirms dispatch on the phone, not that playback changed. This version does not display track titles or playback state. It needs no notification-access permission or Tasker setup. The music-page volume buttons adjust the normal phone media level. The optional announcement setting temporarily raises it during calls; some audio outputs have fixed volume.
 
@@ -48,17 +50,17 @@ Music commands use their own acknowledgments and sequence numbers. Duplicate mes
 
 ## Band layout
 
-Xiaomi specifies a **212 × 520 pixel, 1.72-inch AMOLED** display for the Band 10. The score panel uses the full 212-pixel width with 448 pixels of centered content height. Headers, footers and secondary pages remain inset from the rounded ends.
+Xiaomi specifies a **212 × 520 pixel, 1.72-inch AMOLED** display for the Band 10. The Play page fills that display; secondary pages use 448 pixels of centered content height with text inset from the rounded ends.
 
-- Rally buttons are **212 × 100 pixels**, spanning the full screen width across its straight-sided middle. They retain an 8-pixel gap and large team labels.
-- **Undo** and **Speak** are each **96 × 60 pixels**, up from 56 × 44, with larger labels. They are the only secondary buttons on the score page.
-- The horizontal pager contains **options → score → music**, with score selected on opening. Swiping right from score opens options; swiping left opens music. Page swipes guard against accidental taps on either scoring or options buttons.
-- Saving a correction or starting a new game returns to score. Returning from phone-connection details restores the page you came from.
+- Each rally button is **212 × 260 pixels**: We won above, They won below. A **176 × 64** serve badge overlays their seam. The badge also shows Singles, Game over or Save failed when relevant.
+- Live score shows both team scores, the serving side/server, the spoken score order and phone status. **Undo** and **Speak** are each **96 × 64 pixels**; **Correct** is **180 × 60**.
+- The native horizontal pager contains **Settings → Live score → Play → Music**, with Play selected on opening. Swipes guard against accidental rally, edit or music actions; scoring controls only act on their own page.
+- Undo and saved corrections stay on Live score. Cancel returns to the page that opened the form. New games open Play. Phone-connection details return to the page you came from.
 - Correction and setup controls fit without vertical overflow. Long connection details scroll independently while Reconnect and Back stay visible.
 
-![Band 10 layout preview](docs/band-ui-0.1.7.png)
+![Band 10 layout preview](docs/band-ui-0.1.9.png)
 
-This preview uses the source template and CSS in a browser with a conservative rounded display mask. It checks sample two-digit scores, long status messages and the secondary screens; it is not a screenshot or emulator of Vela.
+This preview uses the source template and CSS in a browser with a conservative rounded display mask. It checks button halves, serve-badge alignment, two-digit scores, long status messages and the secondary screens; it is not a screenshot or emulator of Vela.
 
 Notify node IDs are opaque. In v0.1.2, an empty string was incorrectly used to mean both “no selected band” and a provider-supplied route. This could show “Band app reached the phone. Waiting for score sync...” alongside “Last message send: Not attempted.” The new phone app uses `null` only for an absent route and passes Notify’s actual ID through unchanged for messages and listener cleanup. The selection diagnostic now checks whether a saved selection exists instead of requiring a nonempty ID.
 
@@ -66,23 +68,23 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.8.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.8.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.9.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.9.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
 5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Voice settings** to install an offline English voice and then stop/start the announcer.
-6. Open **Pickleball** on the band. Start a new game, choosing singles/doubles, who serves first and 11/15/21 points. If offline, swipe right to **Game options → Phone connection → Reconnect** and wait for the displayed diagnosis. Use **Back**, return to the score page, wait for **Phone connected**, then tap **Speak**. The phone should read the displayed call; the band should eventually say **Score spoken**.
+6. Open **Pickleball** on the band. Start a new game, choosing singles/doubles, who serves first and 11/15/21 points. From Play, swipe right for **Live score**. If offline, tap the phone status to open **Phone link → Reconnect**, or swipe right again for **Settings → Phone connection**. Return with **Back**, wait for **Phone connected** on Live score, then tap **Speak**. The phone should read the displayed call; the band should eventually say **Score spoken**.
 
 The announcer has an ongoing notification while active. Leave it running during play, then use **Stop announcer** or the notification's **Stop** action. Speech uses the phone's selected media output, including connected headphones or speakers. The Announcement volume setting can temporarily raise its level while music pauses.
 
 ## During a game
 
 - **We won / They won:** record the rally result. Under traditional side-out scoring, winning while receiving changes the server or serving side without adding a point.
-- **Undo:** restore the entire previous state, including serve and server number. Up to 100 changes are retained.
-- **Swipe right → Correct score:** edit either score, serving side and (in doubles) server number; **Save & speak** applies the correction once. **Cancel** discards edits.
-- **Speak:** repeat the current call without changing the game.
-- **Swipe right → Phone connection → Reconnect:** retry the phone handshake and show Vela’s connection diagnosis. Returning to the band app also retries immediately; while visible and waiting for the phone, it retries every eight seconds. Vela manages the physical link, so this cannot force Bluetooth pairing or restart Notify.
-- **Swipe right → New game:** choose new-game settings. **Start game** replaces the current game and its undo history; **Cancel** preserves it.
+- **Live score → Undo:** restore the entire previous state, including serve and server number. Up to 100 changes are retained.
+- **Swipe right → Live score → Correct:** edit either score, serving side and (in doubles) server number; **Save & speak** applies the correction once. **Cancel** discards edits.
+- **Live score → Speak:** repeat the current call without changing the game.
+- **Swipe right twice → Settings → Phone connection → Reconnect:** retry the phone handshake and show Vela’s connection diagnosis. Returning to the band app also retries immediately; while visible and waiting for the phone, it retries every eight seconds. Vela manages the physical link, so this cannot force Bluetooth pairing or restart Notify.
+- **Swipe right twice → Settings → New game:** choose new-game settings. **Start game** replaces the current game and its undo history; **Cancel** preserves it.
 
 Doubles calls are serving score, receiving score, server number. The opening serve is `0 - 0 - 2`. Singles uses two numbers. A rally that changes the serving team adds “Turnover” before those numbers. Corrections and undo begin with “Correction,” even when they change serve. Speak repeats just the current call, without replaying “Turnover.” At a winning score, the announcement gives the final score and winner. Games use win-by-two; further rallies are blocked after a win until Undo, Correct or New. Scores are limited to 99. Rally scoring and player-position tracking are outside this prototype.
 
@@ -90,7 +92,7 @@ Each update is saved on the band before transmission. Updates made offline stay 
 
 ## First device check
 
-1. Confirm the band opens on score, the rally buttons span the full display width, and Undo/Speak are visible and tappable. Swipe right for options and left for music, returning to score from each.
+1. Confirm the band opens on Play, the rally buttons each fill half the display, and the serving team is centered between them. Swipe right for Live score and its Undo/Speak/Correct controls, right again for Settings, and left from Play for Music. Swipe back onto both rally buttons and confirm no rally was recorded.
 2. With the phone unlocked, test the voice. Start a doubles game with us serving and tap They won: expect “Turnover. Zero. Zero. One.” Tap We won once: expect “Zero. Zero. Two.” Tap We won again: expect “Turnover. Zero. Zero. One.”
 3. Lock the phone, wait a minute, and score another rally. Repeat after several minutes.
 4. Test Undo and a correction affecting both points and server.
@@ -119,7 +121,7 @@ The Android build creates a local prototype signing key and copies the matching 
 
 Keep `sign/` and `band/sign/` private and preserve them for updates to an installed pair. They are deliberately excluded from the distributable source archive. Rebuilding without those keys creates a new signing identity; Android will require removal of an older differently signed build before installing it. Do not uninstall the band app to update it without first noting the current score, because uninstallation may erase the saved game.
 
-Run `npm test` at the project root for the 25 scoring and band-controller tests, including reconnect/resume, saved-game preservation, swipe/tap isolation, music delivery, stale callbacks and diagnosis errors. For the Android score/protocol tests, download `org.json:json:20240303` from Maven Central as a JVM-only test dependency, then run:
+Run `npm test` at the project root for the 26 scoring and band-controller tests, including reconnect/resume, saved-game preservation, swipe/tap isolation, music delivery, stale callbacks and diagnosis errors. For the Android score/protocol tests, download `org.json:json:20240303` from Maven Central as a JVM-only test dependency, then run:
 
 ```bash
 "$PICKLEBALL_JDK/bin/javac" -cp /path/to/json-20240303.jar -d build/java-tests android/src/com/wmahmood/pickleball/Score.java android/src/com/wmahmood/pickleball/MessageOrder.java tests/ScoreTest.java
@@ -174,6 +176,7 @@ To regenerate the browser layout preview, run `node scripts/preview_band.cjs` wi
 - [Android audio focus](https://developer.android.com/media/optimize/audio-focus)
 - [Android TTS volume](https://developer.android.com/reference/android/speech/tts/TextToSpeech.Engine#KEY_PARAM_VOLUME)
 - [Android Bluetooth absolute volume](https://source.android.com/docs/core/connect/bluetooth/services#absolute-volume-control)
+- [Vela stack overlay documentation](https://iot.mi.com/vela/quickapp/en/components/container/stack.html)
 - [Vela native swiper documentation](https://iot.mi.com/vela/quickapp/en/components/container/swiper.html)
 - [Xiaomi Vela app documentation](https://iot.mi.com/vela/quickapp/en/)
 - [Notify wearable apps](https://www.mibandnotify.com/xiaomi-mi-band/notify-app.php)

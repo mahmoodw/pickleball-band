@@ -7,37 +7,46 @@
     <swiper if="{{screen === 'game'}}" id="gamePages" class="gamePages" index="{{pageIndex}}" loop="false" indicator="false" onchange="pageChanged" ontouchstart="pageTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd">
     <div class="slide">
     <div class="panel">
-      <text class="title">Game options</text>
+      <text class="title">Settings</text>
       <text class="menuCall">{{scoreCall}}</text>
-      <div class="button" onclick="edit"><text class="buttonText">Correct score</text></div>
-      <div class="button" onclick="showMusic"><text class="buttonText">Music controls</text></div>
       <div class="button" onclick="connectionSettings"><text class="buttonText">Phone connection</text></div>
       <div class="button" onclick="settings"><text class="buttonText">New game</text></div>
-      <div class="button" onclick="showScore"><text class="buttonText">Back to score</text></div>
-      <text class="musicHint">Swipe left for score</text>
+      <div class="button" onclick="showRally"><text class="buttonText">Back to play</text></div>
+      <text class="musicHint">Swipe left: live score</text>
     </div>
     </div>
     <div class="slide">
-    <div class="panel gamePanel">
+    <div class="panel scorePanel">
+      <text class="title">Live score</text>
       <div class="row scoreLabels"><text class="teamLabel">US</text><text class="teamLabel">THEM</text></div>
       <div class="row scores"><text class="score">{{us}}</text><text class="score">{{them}}</text></div>
       <text class="serve">{{serveLabel}}</text>
+      <text class="menuCall">{{scoreCall}}</text>
       <text class="status" onclick="connectionSettings">{{phoneStatus}}</text>
-      <div class="rallyButton ours" onclick="weWon">
-        <text class="rallyTitle oursText">We won</text><text class="rallyCaption oursText">the rally</text>
-      </div>
-      <div class="rallyButton theirs" onclick="theyWon">
-        <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
-      </div>
       <div class="row gameActions">
         <div class="scoreAction" onclick="undo"><text class="scoreActionText">Undo</text></div>
         <div class="scoreAction" onclick="repeat"><text class="scoreActionText">Speak</text></div>
       </div>
+      <div class="button correctButton" onclick="edit"><text class="buttonText">Correct</text></div>
       <text class="gameFoot">{{notice}}</text>
-      <text class="pageHint">Swipe right: options</text>
-      <text class="pageHint">Swipe left: music</text>
+      <text class="pageHint">Swipe right: settings</text>
+      <text class="pageHint">Swipe left: play</text>
     </div>
     </div>
+    <stack class="rallyPage">
+      <div class="rallyHalves">
+        <div class="rallyButton ours" onclick="weWon">
+          <text class="rallyTitle oursText">We won</text><text class="rallyCaption oursText">the rally</text>
+        </div>
+        <div class="rallyButton theirs" onclick="theyWon">
+          <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
+        </div>
+      </div>
+      <div class="serveBadge">
+        <text class="badgeTeam">{{rallyServe}}</text>
+        <text class="badgeDetail">{{rallyDetail}}</text>
+      </div>
+    </stack>
     <div class="slide">
     <div class="panel">
       <text class="title">Music</text>
@@ -52,8 +61,8 @@
         <div class="smallButton half" onclick="musicQuieter"><text class="stepText">−</text></div>
         <div class="smallButton half" onclick="musicLouder"><text class="stepText">+</text></div>
       </div>
-      <div class="smallButton wide" onclick="showScore"><text class="smallText">Back to score</text></div>
-      <text class="musicHint">Swipe right for score</text>
+      <div class="smallButton wide" onclick="showRally"><text class="smallText">Back to play</text></div>
+      <text class="musicHint">Swipe right: play</text>
     </div>
     </div>
     </swiper>
@@ -117,11 +126,11 @@ let busy = false;
 let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUntil = 0;
 export default {
   private: {
-    screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '',
-    phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', connectionReturnIndex: 1, notice: '', editUs: 0, editThem: 0,
+    screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '', rallyServe: '', rallyDetail: '',
+    phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', connectionReturnIndex: 2, formReturnIndex: 2, notice: '', editUs: 0, editThem: 0,
     editServing: 'Us', editServer: 2, isDoubles: true,
     newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: '',
-    pageIndex: 1, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false
+    pageIndex: 2, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false
   },
   onInit() {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
@@ -244,12 +253,14 @@ export default {
   pageTouchEnd() { if (dragged) ignoreTapUntil = Date.now() + 350; },
   canTap() { return !dragged && Date.now() >= ignoreTapUntil; },
   canScoreTap() { return this.screen === 'game' && this.pageIndex === 1 && this.canTap(); },
+  canRallyTap() { return this.screen === 'game' && this.pageIndex === 2 && this.canTap(); },
   pageChanged(event) {
-    if (event.index !== 0 && event.index !== 1 && event.index !== 2) return;
+    if (event.index !== 0 && event.index !== 1 && event.index !== 2 && event.index !== 3) return;
     this.pageIndex = event.index; ignoreTapUntil = Date.now() + 350;
   },
-  showMusic() { this.goToPage(2); },
+  showMusic() { this.goToPage(3); },
   showScore() { this.goToPage(1); },
+  showRally() { this.goToPage(2); },
   goToPage(index) {
     if (!this.canTap() || busy) return;
     this.pageIndex = index;
@@ -262,7 +273,7 @@ export default {
   musicQuieter() { this.sendMusic('volumeDown'); },
   musicLouder() { this.sendMusic('volumeUp'); },
   sendMusic(action) {
-    if (this.screen !== 'game' || this.pageIndex !== 2 || !this.canTap() || this.musicBusy || busy) return;
+    if (this.screen !== 'game' || this.pageIndex !== 3 || !this.canTap() || this.musicBusy || busy) return;
     if (!challenge) { this.musicStatus = 'Phone offline - reconnect'; this.hello(); return; }
     if (!this.mediaAvailable) { this.musicStatus = 'Update phone app for music'; return; }
     const sent = ++mediaSequence, generation = linkGeneration;
@@ -287,6 +298,8 @@ export default {
     this.hasGame = true; this.us = s.scores[0]; this.them = s.scores[1];
     this.scoreCall = rules.call(s); this.isDoubles = s.mode === 'doubles';
     const won = rules.winner(s);
+    this.rallyServe = won !== -1 ? (won === 0 ? 'We win!' : 'They win!') : (s.serving === 0 ? 'We serve' : 'They serve');
+    this.rallyDetail = won !== -1 ? 'Game over' : (this.isDoubles ? 'Server ' + s.server : 'Singles');
     this.serveLabel = won !== -1 ? (won === 0 ? 'We win!' : 'They win!') :
       (s.serving === 0 ? 'We serve' : 'They serve') + (this.isDoubles ? ' / server ' + s.server : '');
     this.notice = won !== -1 ? 'Game over - Undo or New' : (s.mode === 'doubles' ? 'Doubles' : 'Singles') + ' / to ' + s.target;
@@ -319,17 +332,21 @@ export default {
     if (busy || next === game) return;
     busy = true;
     storage.set({key: 'pickleball.game.v1', value: JSON.stringify(next), success: () => {
-      game = next; busy = false; this.pageIndex = 1; this.screen = 'game'; this.render();
+      game = next; busy = false;
+      if (action === 'start') this.pageIndex = 2;
+      else if (action === 'correct') this.pageIndex = 1;
+      this.screen = 'game'; this.render();
       try { vibrator.vibrate({mode: 'short'}); } catch (_) {}
       this.send(action);
-    }, fail: () => { busy = false; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
+    }, fail: () => { busy = false; this.rallyDetail = 'Save failed'; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
   },
-  weWon() { if (game && this.canScoreTap()) this.save(rules.rally(game, 0), 'rally'); },
-  theyWon() { if (game && this.canScoreTap()) this.save(rules.rally(game, 1), 'rally'); },
+  weWon() { if (game && this.canRallyTap()) this.save(rules.rally(game, 0), 'rally'); },
+  theyWon() { if (game && this.canRallyTap()) this.save(rules.rally(game, 1), 'rally'); },
   undo() { if (game && this.canScoreTap()) { if (!game.history.length) { this.notice = 'Nothing to undo'; return; } this.save(rules.undo(game), 'undo'); } },
   repeat() { if (game && !busy && this.canScoreTap()) this.send('repeat'); },
   edit() {
-    if (!game || busy || !this.canTap()) return;
+    if (!game || busy || !this.canScoreTap()) return;
+    this.formReturnIndex = 1;
     draft = JSON.parse(JSON.stringify(game.state)); this.editUs = draft.scores[0]; this.editThem = draft.scores[1];
     this.editServing = draft.serving === 0 ? 'Us' : 'Them'; this.editServer = draft.server; this.screen = 'edit';
   },
@@ -343,24 +360,24 @@ export default {
     draft.scores = [this.editUs, this.editThem]; draft.serving = this.editServing === 'Us' ? 0 : 1;
     draft.server = this.editServer; this.save(rules.correct(game, draft), 'correct');
   },
-  settings() { if (!busy && this.canTap()) { this.newWarning = 'Replaces this game and its undo history.'; this.screen = 'new'; } },
+  settings() { if (!busy && this.screen === 'game' && this.pageIndex === 0 && this.canTap()) { this.formReturnIndex = 0; this.newWarning = 'Replaces this game and its undo history.'; this.screen = 'new'; } },
   toggleMode() { this.newMode = this.newMode === 'Doubles' ? 'Singles' : 'Doubles'; },
   toggleFirst() { this.newFirst = this.newFirst === 'Us' ? 'Them' : 'Us'; },
   toggleTarget() { this.newTarget = this.newTarget === 11 ? 15 : this.newTarget === 15 ? 21 : 11; },
   startGame() { this.save(rules.create(this.newMode.toLowerCase(), this.newFirst === 'Us' ? 0 : 1, this.newTarget), 'start'); },
-  back() { if (!busy) { this.pageIndex = 1; this.screen = 'game'; } }
+  back() { if (!busy) { this.pageIndex = this.formReturnIndex; this.screen = 'game'; } }
 };
 </script>
 <style>
-/* Band 10: 212 × 520. Rally controls span the straight-sided display area.
-   Headers, footers and secondary pages stay inset from the rounded ends. */
+/* Band 10: 212 × 520. Each rally control fills one half of the display.
+   The stack's serve badge overlays their seam; text stays clear of rounded ends. */
 .page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; align-items: center; justify-content: center; }
 .panel { width: 180px; height: 448px; flex-direction: column; align-items: center; justify-content: center; }
-.gamePanel { width: 212px; }
+.scorePanel { width: 200px; }
 .gamePages { width: 212px; height: 520px; }
 .slide { width: 212px; height: 520px; flex-direction: column; align-items: center; justify-content: center; }
 .gameFoot { width: 160px; height: 16px; font-size: 11px; line-height: 14px; color: #a4b7ac; text-align: center; lines: 1; }
-.pageHint { width: 150px; height: 12px; font-size: 10px; line-height: 12px; color: #a4b7ac; text-align: center; lines: 1; }
+.pageHint { width: 160px; height: 18px; font-size: 11px; line-height: 16px; color: #a4b7ac; text-align: center; lines: 1; }
 .musicStatus { width: 172px; height: 44px; font-size: 15px; line-height: 20px; color: #a4d7bf; text-align: center; lines: 2; }
 .musicPlay { width: 180px; height: 80px; margin-bottom: 8px; border-radius: 18px; align-items: center; justify-content: center; }
 .musicPlayText { width: 164px; font-size: 22px; line-height: 28px; color: #10240a; text-align: center; lines: 1; }
@@ -378,14 +395,19 @@ export default {
 .score { width: 86px; height: 58px; font-size: 48px; line-height: 56px; color: #ffffff; text-align: center; lines: 1; }
 .serve { width: 180px; height: 22px; font-size: 14px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
 .status { width: 172px; height: 28px; font-size: 12px; line-height: 14px; color: #a4d7bf; text-align: center; lines: 2; }
-.rallyButton { width: 212px; height: 100px; margin-bottom: 8px; border-radius: 18px; flex-direction: column; align-items: center; justify-content: center; }
+.rallyPage { width: 212px; height: 520px; }
+.rallyHalves { width: 212px; height: 520px; flex-direction: column; }
+.rallyButton { width: 212px; height: 260px; flex-direction: column; align-items: center; justify-content: center; }
+.serveBadge { left: 18px; top: 228px; width: 176px; height: 64px; border-radius: 20px; background-color: #071510; flex-direction: column; align-items: center; justify-content: center; }
+.badgeTeam { width: 160px; height: 30px; font-size: 23px; line-height: 28px; color: #ffffff; text-align: center; lines: 1; }
+.badgeDetail { width: 152px; height: 20px; font-size: 14px; line-height: 18px; color: #baf75e; text-align: center; lines: 1; }
 .ours { background-color: #baf75e; }
 .theirs { background-color: #285e4b; }
-.rallyTitle { width: 164px; height: 34px; font-size: 27px; line-height: 32px; color: #ffffff; text-align: center; lines: 1; }
+.rallyTitle { width: 180px; height: 42px; font-size: 32px; line-height: 40px; color: #ffffff; text-align: center; lines: 1; }
 .rallyCaption { width: 164px; height: 20px; font-size: 15px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
 .oursText { color: #10240a; }
-.gameActions { width: 200px; height: 60px; margin-top: 4px; }
-.scoreAction { width: 96px; height: 60px; background-color: #20382c; border-radius: 16px; align-items: center; justify-content: center; }
+.gameActions { width: 200px; height: 64px; margin-top: 8px; margin-bottom: 8px; }
+.scoreAction { width: 96px; height: 64px; background-color: #20382c; border-radius: 16px; align-items: center; justify-content: center; }
 .scoreActionText { width: 88px; font-size: 20px; line-height: 26px; color: #ffffff; text-align: center; lines: 1; }
 .smallButton { height: 44px; background-color: #20382c; border-radius: 12px; align-items: center; justify-content: center; }
 .half { width: 86px; }
@@ -393,6 +415,7 @@ export default {
 .smallText { font-size: 14px; line-height: 20px; color: #ffffff; text-align: center; lines: 1; }
 .foot { width: 160px; height: 36px; font-size: 12px; line-height: 16px; color: #a4b7ac; text-align: center; lines: 2; }
 .button { width: 180px; height: 52px; margin-bottom: 8px; background-color: #20382c; border-radius: 14px; align-items: center; justify-content: center; }
+.correctButton { height: 60px; }
 .compact { height: 44px; }
 .buttonText { width: 164px; font-size: 17px; line-height: 22px; color: #ffffff; text-align: center; lines: 1; }
 .primary { background-color: #baf75e; }
