@@ -63,8 +63,8 @@ final class AnnouncementAudio {
             if (!focused) { output.note("Audio busy; announcement not started"); end("error",false); return; }
             output.note(request.options.pauseMusic ? "Waiting for music to pause" : request.options.boost ?
                 "Ducking requested; music may also get louder during boost" : "Using normal media volume; music may duck");
-            int delay=request.options.pauseMusic ? 100 : 150;
-            scheduler.after(delay, () -> prepare(token,delay));
+            if (request.options.pauseMusic) scheduler.after(100, () -> prepare(token,100));
+            else boost(token); // No deliberate lead-in or speaker gaps in duck mode.
         } catch (RuntimeException error) { output.note("Could not prepare announcement audio"); end("error",true); }
     }
     private boolean live(int token) { return !closed && current != null && !closing && token==generation; }
@@ -77,8 +77,7 @@ final class AnnouncementAudio {
                 else { output.note(current.options.boost ? "Music kept playing; volume boost skipped" : "Music kept playing; using normal media volume"); speak(token); }
                 return;
             }
-            // Allow a pause to drain buffered music, or give ducking time to settle.
-            // A focus grant does not confirm how much another player's audio ducks.
+            // Let paused music drain from the speaker before changing volume.
             scheduler.after(current.options.gapMs, () -> boost(token));
         } catch (RuntimeException error) { output.note("Audio check failed; volume unchanged"); end("error",true); }
     }
@@ -101,7 +100,8 @@ final class AnnouncementAudio {
             output.note("Announcement volume " + applied + " / " + max + (current.options.pauseMusic ?
                 "; music volume will be restored" : "; ducking requested, background level depends on player"));
             // Absolute-volume commands can reach a speaker after the local slider changes.
-            scheduler.after(current.options.gapMs, () -> speak(token));
+            if (current.options.pauseMusic) scheduler.after(current.options.gapMs, () -> speak(token));
+            else speak(token);
         } catch (RuntimeException error) { output.note("Volume boost unavailable"); end("error",true); }
     }
     private void speak(int token) {
@@ -153,8 +153,9 @@ final class AnnouncementAudio {
         closing=true; final int token=++generation;
         if (stop) { try { output.stop(); } catch (RuntimeException ignored) {} }
         restore();
-        // Keep focus until the restored level has had time to reach the speaker.
-        int delay=focused && (current.options.boost || current.options.pauseMusic) ? current.options.gapMs : 0;
+        // Only pause mode waits for the restored level to reach the speaker.
+        // Duck mode restores first, then releases on the next event-loop turn.
+        int delay=focused && current.options.pauseMusic ? current.options.gapMs : 0;
         scheduler.after(delay, () -> {
             if (closed || token!=generation || current==null) return;
             release();

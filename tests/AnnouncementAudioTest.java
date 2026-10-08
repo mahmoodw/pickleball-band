@@ -128,9 +128,9 @@ public final class AnnouncementAudioTest {
         h=new Harness(); h.volume=80; h.start("already-loud"); h.timer.until(1100);
         check(h.volume==80 && !h.wroteVolume(),"Announcement target reduced an already higher volume");
 
-        h=new Harness(); h.audio.start("normal","Score",new AnnouncementAudio.Options(false,false,75,500)); h.timer.until(150);
+        h=new Harness(); h.audio.start("normal","Score",new AnnouncementAudio.Options(false,false,75,500));
         check(h.events.contains("0:duck") && !h.wroteVolume() && h.spoken.size()==1,"Default audio behavior regressed");
-        h.audio.completed("normal",true); h.timer.until(150); check(h.released(),"Unboosted call kept focus unnecessarily");
+        h.audio.completed("normal",true); h.timer.until(0); check(h.released(),"Unboosted call kept focus unnecessarily");
 
         h=new Harness(); h.start("closing"); h.timer.until(700); h.audio.close(); h.timer.until(20000);
         check(h.volume==40 && h.released() && h.spoken.isEmpty(),"Service shutdown leaked volume or delayed speech");
@@ -147,15 +147,17 @@ public final class AnnouncementAudioTest {
 
         AnnouncementAudio.Options duck=new AnnouncementAudio.Options(true,false,75,350);
         h=new Harness(); h.audio.start("duck-boost","Score",duck);
-        check(h.events.equals(Arrays.asList("0:duck")) && h.music,"Duck mode requested a pause");
-        h.timer.until(499); check(h.volume==40 && h.spoken.isEmpty(),"Did not wait for ducking before boosting");
-        h.timer.until(500); check(h.volume==75 && h.music && h.spoken.isEmpty(),"Active ducked music incorrectly blocked boost");
-        h.timer.until(849); check(h.spoken.isEmpty(),"Ducked boost skipped speaker settling");
-        h.timer.until(850); check(h.events.contains("850:speak=duck-boost@75") && h.music,"Ducked boost was undone before speech");
+        check(h.events.equals(Arrays.asList("0:duck","0:volume=75","0:speak=duck-boost@75","0:started=duck-boost")) && h.music,
+            "Duck mode must request focus, boost and start speech immediately in order");
         h.audio.completed("duck-boost",true);
         check(h.volume==40 && !h.released(),"Unducked music before restoring its level");
-        h.timer.until(1199); check(!h.released(),"Ducked restore gap ended early");
-        h.timer.until(1200); check(h.events.contains("1200:release@40") && h.finished.contains("duck-boost:spoken"),"Ducked completion leaked focus");
+        h.timer.until(0); check(h.events.contains("0:release@40") && h.finished.contains("duck-boost:spoken"),"Ducked completion added a settling delay");
+        for(boolean boost : new boolean[]{false,true}) for(int gap : new int[]{250,350,1500}) {
+            h=new Harness(); h.audio.start("immediate","Score",new AnnouncementAudio.Options(boost,false,75,gap));
+            check(h.spoken.size()==1 && h.volume==(boost ? 75 : 40),"Saved pause gap delayed a ducked call: "+gap);
+            h.audio.completed("immediate",true); h.timer.until(0);
+            check(h.volume==40 && h.released(),"Saved pause gap delayed ducked restoration: "+gap);
+        }
 
         h=new Harness(); h.audio.start("pause-only","Score",new AnnouncementAudio.Options(false,true,75,350));
         h.timer.until(450);
@@ -167,8 +169,8 @@ public final class AnnouncementAudioTest {
         check(h.spoken.size()==1 && !h.wroteVolume(),"Ignored pause-only request hung the call");
 
         h=new Harness(); h.audio.start("duck-cancel","Score",duck); h.timer.until(550); h.audio.cancel();
-        check(h.volume==40,"Ducked preparation cancellation did not restore volume");
-        h.timer.until(2000); check(h.spoken.isEmpty() && h.released(),"Ducked preparation survived cancellation");
+        check(h.volume==40,"Ducked cancellation did not restore volume");
+        h.timer.until(550); check(h.spoken.size()==1 && h.released(),"Ducked cancellation delayed cleanup or replayed speech");
 
         for(int failure=0;failure<3;failure++) {
             h=new Harness(); h.speechWorks=failure!=0; h.speechThrows=failure==1;
@@ -190,14 +192,14 @@ public final class AnnouncementAudioTest {
 
         h=new Harness(); h.audio.start("duck-old","Score",duck); h.timer.until(850); h.start("pause-new");
         check(h.volume==40,"Switching music modes captured a boosted baseline");
-        h.timer.until(2300); check(h.events.contains("1200:pause") && h.events.contains("2300:speak=pause-new@75"),"Replacement did not use the new music mode");
+        h.timer.until(1950); check(h.events.contains("850:pause") && h.events.contains("1950:speak=pause-new@75"),"Replacement did not use the new music mode");
         h.audio.completed("duck-old",true); check(h.volume==75,"Stale duck completion changed the replacement volume");
-        h.audio.completed("pause-new",true); h.timer.until(2800); check(h.volume==40 && h.released(),"Replacement did not restore baseline");
+        h.audio.completed("pause-new",true); h.timer.until(2450); check(h.volume==40 && h.released(),"Replacement did not restore baseline");
 
-        h=new Harness(); h.audio.start("duck-timeout","Score",duck); h.timer.until(13200);
+        h=new Harness(); h.audio.start("duck-timeout","Score",duck); h.timer.until(12000);
         check(h.volume==40 && h.released() && h.finished.contains("duck-timeout:error"),"Ducked timeout left volume or focus raised");
         h=new Harness(); h.audio.start("duck-close","Score",duck); h.timer.until(550); h.audio.close(); h.timer.until(20000);
-        check(h.volume==40 && h.released() && h.spoken.isEmpty(),"Ducked service shutdown leaked volume or speech");
+        check(h.volume==40 && h.released() && h.spoken.size()==1,"Ducked service shutdown leaked volume or replayed speech");
         for(int level : new int[]{0,80}) {
             h=new Harness(); h.volume=level; h.audio.start("duck-unchanged","Score",duck); h.timer.until(850);
             check(h.volume==level && !h.wroteVolume(),"Ducked boost changed muted/already-higher media");

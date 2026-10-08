@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
         button(body,"Request band access (if needed)",this::grantAccess);
         button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to choose a louder voice, music pause or ducking, and a speaker settling gap. Audio follows your phone's media output.\n\nVersion 0.1.10. The band opens on two large rally buttons. Swipe right for live score, Undo, Speak and Correct; swipe right again for settings. Swipe left from the rally buttons for music. Start playback in your phone music app first.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to choose a louder voice, music pause or ducking, and a speaker settling gap. Audio follows your phone's media output.\n\nVersion 0.1.11. The band opens on two large rally buttons. Tap the middle serve/score area to speak; hold it to undo. Swipe right for live score, Undo, Speak and Correct; swipe right again for settings. Swipe left from the rally buttons for music. Start playback in your phone music app first.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;
@@ -77,7 +77,8 @@ public class MainActivity extends Activity {
         announcementAudio.setText("Announcement volume: " + (p.getBoolean("announcementBoost",false) ?
             p.getInt("announcementVolume",75) + "% when the normal level is lower" : "Same as music") +
             (p.getBoolean("announcementPauseMusic",p.getBoolean("announcementBoost",false)) ? "; pause music requested" : "; ducking requested") +
-            "\nSpeaker settling gap: " + p.getInt("announcementGap",500) + " ms" +
+            (p.getBoolean("announcementPauseMusic",p.getBoolean("announcementBoost",false)) ?
+                "\nSpeaker settling gap: " + p.getInt("announcementGap",500) + " ms" : "\nNo added announcement delay") +
             (AnnouncerService.running ? "\n" + p.getString("announcementAudio","Ready to test") : ""));
     }
     private void announcementSettings() {
@@ -108,14 +109,14 @@ public class MainActivity extends Activity {
         gapSteps.addView(more,new LinearLayout.LayoutParams(0,dp(48),1)); form.addView(gapSteps);
         Runnable labels=() -> {
             volumeLabel.setText("Announcement volume: " + (20+volume.getProgress()*5) + "%");
-            gapLabel.setText("Speaker settling gap: " + (minGap+gap.getProgress()*gapStep) + " ms");
-            boolean settling=boost.isChecked() || pause.isChecked();
+            gapLabel.setText("Speaker settling gap: " + (minGap+gap.getProgress()*gapStep) + " ms" + (pause.isChecked() ? "" : " (pause only)"));
+            boolean settling=pause.isChecked();
             volume.setEnabled(boost.isChecked()); gap.setEnabled(settling);
             less.setEnabled(settling && gap.getProgress()>0); more.setEnabled(settling && gap.getProgress()<gap.getMax());
             modeHint.setText(pause.isChecked() ?
                 "Music is asked to pause. With volume boost on, the boost is skipped if music keeps playing. The normal level returns before focus is released." :
-                boost.isChecked() ? "Music is asked to duck while the voice is boosted. Android and your player control how low it goes; music may also get louder. Some players pause even with ducking. Try a modest boost with Save & test." :
-                "Music is asked to duck at your normal media volume. Android and your player control the amount; some players pause instead.");
+                boost.isChecked() ? "Music is asked to duck while the voice is boosted, with no added delay. Android and your player control how low it goes; music may also get louder. Some players pause even with ducking. Try a modest boost with Save & test." :
+                "Music is asked to duck at your normal media volume, with no added delay. Android and your player control the amount; some players pause instead.");
         };
         SeekBar.OnSeekBarChangeListener changes=new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar bar,int value,boolean fromUser) { labels.run(); }
@@ -125,7 +126,7 @@ public class MainActivity extends Activity {
         volume.setOnSeekBarChangeListener(changes); gap.setOnSeekBarChangeListener(changes);
         boost.setOnCheckedChangeListener((button,checked) -> labels.run());
         pause.setOnCheckedChangeListener((button,checked) -> labels.run()); labels.run();
-        label(form,"Adjust in 25 ms steps. Try 350 ms between 250 and 500. The gap is used before a boost, after changing volume and before releasing the music. Media stays muted if its volume is zero; an already higher level is left alone.",14,Color.rgb(164,183,172));
+        label(form,"Pause mode uses the gap before a boost, after changing volume and before releasing music. Adjust in 25 ms steps; try 350 ms. With Pause off, speech starts without these waits; TTS and Bluetooth still have their own latency. Media stays muted at zero volume.",14,Color.rgb(164,183,172));
         Runnable save=() -> {
             prefs.edit().putBoolean("announcementBoost",boost.isChecked()).putBoolean("announcementPauseMusic",pause.isChecked())
                 .putInt("announcementVolume",20+volume.getProgress()*5).putInt("announcementGap",minGap+gap.getProgress()*gapStep).apply();
@@ -195,7 +196,7 @@ public class MainActivity extends Activity {
     }
     private void copyDiagnostics() {
         SharedPreferences p=getSharedPreferences(AnnouncerService.PREFS,0);
-        StringBuilder text=new StringBuilder("Pickleball 0.1.10 / Android API ").append(Build.VERSION.SDK_INT);
+        StringBuilder text=new StringBuilder("Pickleball 0.1.11 / Android API ").append(Build.VERSION.SDK_INT);
         for (String name : NotifyBridge.PACKAGES) {
             try { text.append("\n").append(name).append(" ").append(getPackageManager().getPackageInfo(name,0).versionName); }
             catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}

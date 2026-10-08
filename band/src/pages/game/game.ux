@@ -42,7 +42,7 @@
           <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
         </div>
       </div>
-      <div class="serveBadge">
+      <div class="serveBadge" onclick="badgeSpeak" onlongpress="badgeUndo">
         <text class="badgeTeam">{{rallyServe}}</text>
         <text class="badgeDetail">{{rallyDetail}}</text>
       </div>
@@ -124,6 +124,7 @@ let game, draft, connection, heartbeat, ackTimer, session, sequence, challenge;
 let linkGeneration = 0, alive = false;
 let busy = false;
 let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUntil = 0;
+let badgeHandled = false;
 export default {
   private: {
     screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '', rallyServe: '', rallyDetail: '',
@@ -134,7 +135,7 @@ export default {
   },
   onInit() {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
-    mediaSequence = 0; dragged = false; ignoreTapUntil = 0;
+    mediaSequence = 0; dragged = false; ignoreTapUntil = 0; badgeHandled = false;
     session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     this.refreshConnection(false);
     storage.get({key: 'pickleball.game.v1', default: '', success: value => {
@@ -152,7 +153,7 @@ export default {
       if (!challenge) this.hello();
     }, 8000);
   },
-  onHide() { clearInterval(heartbeat); },
+  onHide() { clearInterval(heartbeat); badgeHandled = true; },
   onDestroy() {
     alive = false; ++linkGeneration;
     clearInterval(heartbeat); clearTimeout(ackTimer); clearTimeout(mediaTimer);
@@ -243,6 +244,7 @@ export default {
     clearTimeout(mediaTimer); this.musicBusy = false; this.mediaAvailable = false; this.musicStatus = message;
   },
   pageTouchStart(event) {
+    badgeHandled = false;
     const touch = event.touches && event.touches[0];
     touchX = touch ? touch.clientX : undefined; touchY = touch ? touch.clientY : undefined; dragged = false;
   },
@@ -257,6 +259,7 @@ export default {
   pageChanged(event) {
     if (event.index !== 0 && event.index !== 1 && event.index !== 2 && event.index !== 3) return;
     this.pageIndex = event.index; ignoreTapUntil = Date.now() + 350;
+    badgeHandled = true;
   },
   showMusic() { this.goToPage(3); },
   showScore() { this.goToPage(1); },
@@ -299,7 +302,7 @@ export default {
     this.scoreCall = rules.call(s); this.isDoubles = s.mode === 'doubles';
     const won = rules.winner(s);
     this.rallyServe = won !== -1 ? (won === 0 ? 'We win!' : 'They win!') : (s.serving === 0 ? 'We serve' : 'They serve');
-    this.rallyDetail = won !== -1 ? 'Game over' : (this.isDoubles ? 'Server ' + s.server : 'Singles');
+    this.rallyDetail = this.scoreCall;
     this.serveLabel = won !== -1 ? (won === 0 ? 'We win!' : 'They win!') :
       (s.serving === 0 ? 'We serve' : 'They serve') + (this.isDoubles ? ' / server ' + s.server : '');
     this.notice = won !== -1 ? 'Game over - Undo or New' : (s.mode === 'doubles' ? 'Doubles' : 'Singles') + ' / to ' + s.target;
@@ -338,11 +341,25 @@ export default {
       this.screen = 'game'; this.render();
       try { vibrator.vibrate({mode: 'short'}); } catch (_) {}
       this.send(action);
-    }, fail: () => { busy = false; this.rallyDetail = 'Save failed'; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
+    }, fail: () => { busy = false; this.rallyServe = 'Save failed'; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
   },
-  weWon() { if (game && this.canRallyTap()) this.save(rules.rally(game, 0), 'rally'); },
-  theyWon() { if (game && this.canRallyTap()) this.save(rules.rally(game, 1), 'rally'); },
-  undo() { if (game && this.canScoreTap()) { if (!game.history.length) { this.notice = 'Nothing to undo'; return; } this.save(rules.undo(game), 'undo'); } },
+  weWon() { if (game && !badgeHandled && this.canRallyTap()) this.save(rules.rally(game, 0), 'rally'); },
+  theyWon() { if (game && !badgeHandled && this.canRallyTap()) this.save(rules.rally(game, 1), 'rally'); },
+  // Native longpress may be followed by click on release. Consume this entire
+  // touch until the next touchstart, including repeated longpress callbacks.
+  badgeSpeak() {
+    if (!game || busy || badgeHandled || !this.canRallyTap()) return;
+    badgeHandled = true; this.send('repeat');
+  },
+  badgeUndo() {
+    if (!game || busy || badgeHandled || !this.canRallyTap()) return;
+    badgeHandled = true; this.undoLast();
+  },
+  undoLast() {
+    if (!game.history.length) { this.notice = 'Nothing to undo'; return; }
+    this.save(rules.undo(game), 'undo');
+  },
+  undo() { if (game && this.canScoreTap()) this.undoLast(); },
   repeat() { if (game && !busy && this.canScoreTap()) this.send('repeat'); },
   edit() {
     if (!game || busy || !this.canScoreTap()) return;

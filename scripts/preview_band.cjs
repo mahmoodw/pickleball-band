@@ -8,7 +8,7 @@ const source=fs.readFileSync(root+'/band/src/pages/game/game.ux','utf8');
 const template=source.split('<template>')[1].split('</template>')[0];
 let css=source.split('<style>')[1].split('</style>')[0];
 css=css.replace(/lines:\s*(\d+);/g,(_,n)=>'--vela-lines: '+n+';'+(n==='1'?' white-space: nowrap;':''));
-const base={screen:'game',pageIndex:2,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',rallyServe:'We serve',rallyDetail:'Server 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
+const base={screen:'game',pageIndex:2,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',rallyServe:'We serve',rallyDetail:'8 - 6 - 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
 const scenes=[
  {name:'Settings',state:{pageIndex:0}},
  {name:'Live score',state:{pageIndex:1}},
@@ -18,10 +18,10 @@ const scenes=[
  {name:'New game',state:{screen:'new'}},
  {name:'Long message',state:{screen:'connection',phoneStatus:'Phone offline - score saved',linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone. The connection details can be copied from the phone app.'}},
  {name:'Long score / offline',state:{pageIndex:1,us:99,them:98,scoreCall:'98 - 99 - 2',serveLabel:'They serve / server 2',phoneStatus:'Phone offline - score saved'}},
- {name:'Play · singles',state:{rallyServe:'They serve',rallyDetail:'Singles'}},
- {name:'Play · game over',state:{rallyServe:'They win!',rallyDetail:'Game over'}},
- {name:'Play · save failed',state:{rallyDetail:'Save failed'}},
- {name:'Music / connection error',state:{pageIndex:3,musicStatus:'Control failed - check phone'}}
+ {name:'Play · singles',state:{rallyServe:'They serve',rallyDetail:'6 - 8'}},
+ {name:'Play · game over',state:{rallyServe:'They win!',rallyDetail:'11 - 8 - 1'}},
+ {name:'Play · save failed',state:{rallyServe:'Save failed'}},
+ {name:'Play · two-digit score',state:{rallyServe:'They serve',rallyDetail:'98 - 99 - 2'}}
 ];
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});

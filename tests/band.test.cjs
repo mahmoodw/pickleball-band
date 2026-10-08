@@ -54,7 +54,8 @@ test('storage failure leaves saved score and announcements unchanged', () => {
   assert.equal(h.page.us,0);
   assert.equal(h.sent.length,count);
   assert.equal(h.page.notice,'Save failed - try again');
-  assert.equal(h.page.rallyDetail,'Save failed');
+  assert.equal(h.page.rallyServe,'Save failed');
+  assert.equal(h.page.rallyDetail,'0 - 0 - 2');
 });
 test('offline scoring reconnects with a silent snapshot, never an old rally', () => {
   const h=harness(JSON.stringify(rules.create()));
@@ -71,11 +72,11 @@ test('band sends a turnover once and clears it for repeat, undo and reconnect', 
   h.page.theyWon();
   assert.equal(h.sent.at(-1).action,'rally');
   assert.equal(h.sent.at(-1).turnover,true);
-  assert.equal(h.page.rallyServe,'They serve'); assert.equal(h.page.rallyDetail,'Server 1');
+  assert.equal(h.page.rallyServe,'They serve'); assert.equal(h.page.rallyDetail,'0 - 0 - 1');
   h.visit(1); h.page.repeat(); assert.equal(h.sent.at(-1).turnover,false);
   h.page.undo(); assert.equal(h.sent.at(-1).turnover,false);
   assert.equal(h.page.pageIndex,1);
-  assert.equal(h.page.rallyServe,'We serve'); assert.equal(h.page.rallyDetail,'Server 2');
+  assert.equal(h.page.rallyServe,'We serve'); assert.equal(h.page.rallyDetail,'0 - 0 - 2');
   h.visit(2);
   h.page.reconnect();
   h.page.theyWon(); // Offline turnover is saved, but never queued for speech.
@@ -207,6 +208,7 @@ test('swiping between every adjacent page cannot record a rally or activate a bu
     h.page.pageTouchMove({touches:[{clientX:side<from ? 200 : 10,clientY:260}]});
     h.page.pageTouchEnd(); h.page.pageChanged({index:side});
     h.page.weWon(); h.page.theyWon(); h.page.undo(); h.page.repeat();
+    h.page.badgeSpeak(); h.page.badgeUndo();
     h.page.edit(); h.page.settings(); h.page.connectionSettings(); h.page.musicToggle();
     assert.equal(h.page.screen,'game'); assert.equal(h.page.pageIndex,side);
     assert.equal(h.writes.length,0); assert.equal(h.sent.length,count);
@@ -220,7 +222,7 @@ test('rally, score and music controls only act on their own page', () => {
   for (const index of [0,1,2,3]) {
     h.visit(index);
     const writes=h.writes.length, sent=h.sent.length;
-    if (index!==2) { h.page.weWon(); h.page.theyWon(); }
+    if (index!==2) { h.page.weWon(); h.page.theyWon(); h.page.badgeSpeak(); h.page.badgeUndo(); }
     if (index!==1) { h.page.undo(); h.page.repeat(); h.page.edit(); }
     if (index!==3) h.page.musicToggle();
     if (index!==0) h.page.settings();
@@ -231,6 +233,49 @@ test('rally, score and music controls only act on their own page', () => {
   assert.equal(h.page.us,0); assert.equal(h.page.pageIndex,1);
   h.page.repeat(); assert.equal(h.sent.at(-1).action,'repeat');
   h.page.pageChanged({index:4}); assert.equal(h.page.pageIndex,1);
+});
+test('badge tap speaks once and holding undoes once without a release-click or rally', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello(); h.page.weWon();
+  assert.equal(h.page.rallyDetail,'1 - 0 - 2');
+  const writes=h.writes.length, sent=h.sent.length;
+  h.settle(); h.page.badgeSpeak(); h.page.badgeSpeak(); h.page.weWon(); h.page.theyWon();
+  assert.equal(h.sent.length,sent+1); assert.equal(h.sent.at(-1).action,'repeat');
+  assert.equal(h.writes.length,writes); assert.equal(h.page.pageIndex,2);
+  h.settle(); h.page.badgeUndo(); h.advance(1500); h.page.badgeUndo();
+  h.page.pageTouchEnd(); h.page.badgeSpeak(); h.page.weWon(); h.page.theyWon();
+  assert.equal(h.sent.length,sent+2); assert.equal(h.sent.at(-1).action,'undo');
+  assert.equal(h.writes.length,writes+1); assert.equal(h.page.us,0);
+  assert.equal(h.page.rallyDetail,'0 - 0 - 2'); assert.equal(h.page.pageIndex,2);
+  // A new gesture works immediately, including after a long hold.
+  h.settle(); h.page.badgeSpeak(); assert.equal(h.sent.at(-1).action,'repeat');
+  h.settle(); h.page.weWon(); assert.equal(h.page.us,1);
+});
+test('badge drag or app hide cancels actions, and a release with no undo history is silent', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  const sent=h.sent.length;
+  h.settle(); h.page.pageTouchMove({touches:[{clientX:145,clientY:260}]});
+  h.advance(1000); h.page.badgeUndo(); h.page.pageTouchEnd(); h.page.badgeSpeak();
+  assert.equal(h.sent.length,sent); assert.equal(h.writes.length,0);
+  h.settle(); h.page.onHide(); h.page.badgeUndo(); h.page.badgeSpeak();
+  assert.equal(h.sent.length,sent); assert.equal(h.writes.length,0);
+  h.settle(); h.page.badgeUndo(); h.page.pageTouchEnd(); h.page.badgeSpeak();
+  assert.equal(h.sent.length,sent); assert.equal(h.writes.length,0);
+  assert.equal(h.page.notice,'Nothing to undo');
+});
+test('badge score tracks singles, game over and full service state after undo', () => {
+  let game=rules.correct(rules.create('singles',0,11),{mode:'singles',scores:[10,8],serving:0,server:1,target:11});
+  const h=harness(JSON.stringify(game)); h.hello();
+  assert.equal(h.page.rallyDetail,'10 - 8');
+  h.page.weWon(); assert.equal(h.page.rallyServe,'We win!'); assert.equal(h.page.rallyDetail,'11 - 8');
+  h.settle(); h.page.badgeUndo(); assert.equal(h.page.rallyServe,'We serve'); assert.equal(h.page.rallyDetail,'10 - 8');
+  h.settle(); h.page.theyWon(); assert.equal(h.page.rallyServe,'They serve'); assert.equal(h.page.rallyDetail,'8 - 10');
+});
+test('badge undo storage failure preserves the score and never speaks on release', () => {
+  const game=rules.rally(rules.create(),0);
+  const h=harness(JSON.stringify(game),true); h.hello(); const sent=h.sent.length;
+  h.settle(); h.page.badgeUndo(); h.page.pageTouchEnd(); h.page.badgeSpeak();
+  assert.equal(h.page.us,1); assert.equal(h.page.rallyDetail,'1 - 0 - 2');
+  assert.equal(h.page.rallyServe,'Save failed'); assert.equal(h.sent.length,sent);
 });
 test('music is never queued offline or retried after timeout, and old phones get an upgrade hint', () => {
   const h=harness(JSON.stringify(rules.create())); h.page.showMusic(); h.settle(); h.page.musicNext();
