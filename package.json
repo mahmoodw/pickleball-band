@@ -1,6 +1,6 @@
 {
   "name": "pickleball-band",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "scripts": {"test": "node tests/scoring.test.cjs && node tests/band.test.cjs"}
 }

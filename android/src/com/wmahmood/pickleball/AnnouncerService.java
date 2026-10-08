@@ -240,7 +240,9 @@ public class AnnouncerService extends Service {
         SharedPreferences prefs=getSharedPreferences(PREFS,0);
         speechStatus("Preparing: " + text);
         announcements.start(activeUtterance,text,new AnnouncementAudio.Options(
-            prefs.getBoolean("announcementBoost",false), prefs.getInt("announcementVolume",75), prefs.getInt("announcementGap",500)));
+            prefs.getBoolean("announcementBoost",false),
+            prefs.getBoolean("announcementPauseMusic",prefs.getBoolean("announcementBoost",false)),
+            prefs.getInt("announcementVolume",75), prefs.getInt("announcementGap",500)));
         if (score != null) ack(score,"speaking");
     }
     private void cancelSpeech() {

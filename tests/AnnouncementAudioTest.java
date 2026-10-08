@@ -6,7 +6,7 @@ import java.util.*;
 public final class AnnouncementAudioTest {
     private static int checks;
     private static void check(boolean ok,String message) { checks++; if (!ok) throw new AssertionError(message); }
-    private static final AnnouncementAudio.Options BOOST=new AnnouncementAudio.Options(true,75,500);
+    private static final AnnouncementAudio.Options BOOST=new AnnouncementAudio.Options(true,true,75,500);
     static final class Timer implements AnnouncementAudio.Scheduler {
         static final class Task {
             final long time, order; final Runnable action;
@@ -128,7 +128,7 @@ public final class AnnouncementAudioTest {
         h=new Harness(); h.volume=80; h.start("already-loud"); h.timer.until(1100);
         check(h.volume==80 && !h.wroteVolume(),"Announcement target reduced an already higher volume");
 
-        h=new Harness(); h.audio.start("normal","Score",new AnnouncementAudio.Options(false,75,500)); h.timer.until(150);
+        h=new Harness(); h.audio.start("normal","Score",new AnnouncementAudio.Options(false,false,75,500)); h.timer.until(150);
         check(h.events.contains("0:duck") && !h.wroteVolume() && h.spoken.size()==1,"Default audio behavior regressed");
         h.audio.completed("normal",true); h.timer.until(150); check(h.released(),"Unboosted call kept focus unnecessarily");
 
@@ -136,9 +136,78 @@ public final class AnnouncementAudioTest {
         check(h.volume==40 && h.released() && h.spoken.isEmpty(),"Service shutdown leaked volume or delayed speech");
         h.start("after-close"); h.timer.until(30000); check(h.spoken.isEmpty(),"Closed controller restarted");
 
-        AnnouncementAudio.Options bounds=new AnnouncementAudio.Options(true,999,9999);
+        // 350 ms is preserved exactly at every phase, not rounded to 250 or 500.
+        h=new Harness(); h.audio.start("fine-pause","Score",new AnnouncementAudio.Options(true,true,75,350));
+        h.timer.until(449); check(h.volume==40 && h.spoken.isEmpty(),"Fine pause gap ended early");
+        h.timer.until(450); check(h.volume==75 && h.spoken.isEmpty(),"Fine pause gap was rounded");
+        h.timer.until(800); check(h.spoken.size()==1,"Fine speaker-settling gap was not applied");
+        h.audio.completed("fine-pause",true); h.timer.until(1149);
+        check(h.volume==40 && !h.released(),"Fine restore gap ended early");
+        h.timer.until(1150); check(h.released(),"Fine restore gap was rounded");
+
+        AnnouncementAudio.Options duck=new AnnouncementAudio.Options(true,false,75,350);
+        h=new Harness(); h.audio.start("duck-boost","Score",duck);
+        check(h.events.equals(Arrays.asList("0:duck")) && h.music,"Duck mode requested a pause");
+        h.timer.until(499); check(h.volume==40 && h.spoken.isEmpty(),"Did not wait for ducking before boosting");
+        h.timer.until(500); check(h.volume==75 && h.music && h.spoken.isEmpty(),"Active ducked music incorrectly blocked boost");
+        h.timer.until(849); check(h.spoken.isEmpty(),"Ducked boost skipped speaker settling");
+        h.timer.until(850); check(h.events.contains("850:speak=duck-boost@75") && h.music,"Ducked boost was undone before speech");
+        h.audio.completed("duck-boost",true);
+        check(h.volume==40 && !h.released(),"Unducked music before restoring its level");
+        h.timer.until(1199); check(!h.released(),"Ducked restore gap ended early");
+        h.timer.until(1200); check(h.events.contains("1200:release@40") && h.finished.contains("duck-boost:spoken"),"Ducked completion leaked focus");
+
+        h=new Harness(); h.audio.start("pause-only","Score",new AnnouncementAudio.Options(false,true,75,350));
+        h.timer.until(450);
+        check(h.events.contains("0:pause") && !h.music && !h.wroteVolume() && h.spoken.size()==1,"Pause option was coupled to volume boost");
+        h.audio.completed("pause-only",true); h.timer.until(800); check(h.released(),"Pause-only call leaked focus");
+
+        h=new Harness(); h.pauseWorks=false;
+        h.audio.start("ignored-pause-only","Score",new AnnouncementAudio.Options(false,true,75,350)); h.timer.until(1500);
+        check(h.spoken.size()==1 && !h.wroteVolume(),"Ignored pause-only request hung the call");
+
+        h=new Harness(); h.audio.start("duck-cancel","Score",duck); h.timer.until(550); h.audio.cancel();
+        check(h.volume==40,"Ducked preparation cancellation did not restore volume");
+        h.timer.until(2000); check(h.spoken.isEmpty() && h.released(),"Ducked preparation survived cancellation");
+
+        for(int failure=0;failure<3;failure++) {
+            h=new Harness(); h.speechWorks=failure!=0; h.speechThrows=failure==1;
+            h.audio.start("duck-failed","Score",duck); h.timer.until(850);
+            if(failure==2) h.audio.completed("duck-failed",false);
+            check(h.volume==40,"Ducked TTS failure left volume raised: "+failure);
+            h.timer.until(1200); check(h.released() && h.finished.contains("duck-failed:error"),"Ducked TTS failure leaked focus: "+failure);
+        }
+        h=new Harness(); h.focusWorks=false; h.audio.start("duck-denied","Score",duck); h.timer.until(2000);
+        check(!h.wroteVolume() && h.spoken.isEmpty(),"Denied duck focus still boosted volume");
+
+        h=new Harness(); h.audio.start("duck-route","Score",duck); h.timer.until(850);
+        h.route="headphones"; h.volume=20; h.timer.until(1350);
+        check(h.volume==20 && h.finished.contains("duck-route:interrupted"),"Ducked route change overwrote the new output");
+
+        h=new Harness(); h.audio.start("duck-manual","Score",duck); h.timer.until(850); h.volume=55;
+        h.audio.completed("duck-manual",true); h.timer.until(1200);
+        check(h.volume==55 && h.released(),"Ducked completion overwrote a manual volume adjustment");
+
+        h=new Harness(); h.audio.start("duck-old","Score",duck); h.timer.until(850); h.start("pause-new");
+        check(h.volume==40,"Switching music modes captured a boosted baseline");
+        h.timer.until(2300); check(h.events.contains("1200:pause") && h.events.contains("2300:speak=pause-new@75"),"Replacement did not use the new music mode");
+        h.audio.completed("duck-old",true); check(h.volume==75,"Stale duck completion changed the replacement volume");
+        h.audio.completed("pause-new",true); h.timer.until(2800); check(h.volume==40 && h.released(),"Replacement did not restore baseline");
+
+        h=new Harness(); h.audio.start("duck-timeout","Score",duck); h.timer.until(13200);
+        check(h.volume==40 && h.released() && h.finished.contains("duck-timeout:error"),"Ducked timeout left volume or focus raised");
+        h=new Harness(); h.audio.start("duck-close","Score",duck); h.timer.until(550); h.audio.close(); h.timer.until(20000);
+        check(h.volume==40 && h.released() && h.spoken.isEmpty(),"Ducked service shutdown leaked volume or speech");
+        for(int level : new int[]{0,80}) {
+            h=new Harness(); h.volume=level; h.audio.start("duck-unchanged","Score",duck); h.timer.until(850);
+            check(h.volume==level && !h.wroteVolume(),"Ducked boost changed muted/already-higher media");
+        }
+        for(int gap : new int[]{275,325,350,375,450}) {
+            check(new AnnouncementAudio.Options(true,false,75,gap).gapMs==gap,"Fine gap was rounded: "+gap);
+        }
+        AnnouncementAudio.Options bounds=new AnnouncementAudio.Options(true,true,999,9999);
         check(bounds.percent==100 && bounds.gapMs==1500,"Upper settings limits not enforced");
-        bounds=new AnnouncementAudio.Options(true,-1,-1);
+        bounds=new AnnouncementAudio.Options(true,true,-1,-1);
         check(bounds.percent==20 && bounds.gapMs==250,"Lower settings limits not enforced");
         System.out.println(checks+" announcement audio sequencing checks passed");
     }

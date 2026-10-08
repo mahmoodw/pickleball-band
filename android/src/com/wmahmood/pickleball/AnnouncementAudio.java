@@ -3,12 +3,13 @@ package com.wmahmood.pickleball;
 /** Main-thread audio sequencing, with no Android dependencies for timing tests. */
 final class AnnouncementAudio {
     static final class Options {
-        final boolean boost;
+        static final int MIN_GAP_MS=250, MAX_GAP_MS=1500, GAP_STEP_MS=25;
+        final boolean boost, pauseMusic;
         final int percent, gapMs;
-        Options(boolean boost, int percent, int gapMs) {
-            this.boost = boost;
+        Options(boolean boost, boolean pauseMusic, int percent, int gapMs) {
+            this.boost = boost; this.pauseMusic = pauseMusic;
             this.percent = Math.max(20, Math.min(100, percent));
-            this.gapMs = Math.max(250, Math.min(1500, gapMs));
+            this.gapMs = Math.max(MIN_GAP_MS, Math.min(MAX_GAP_MS, gapMs));
         }
     }
     interface Output {
@@ -58,30 +59,34 @@ final class AnnouncementAudio {
         current=request; closing=false;
         final int token=++generation;
         try {
-            focused=output.requestFocus(request.options.boost);
+            focused=output.requestFocus(request.options.pauseMusic);
             if (!focused) { output.note("Audio busy; announcement not started"); end("error",false); return; }
-            output.note(request.options.boost ? "Waiting for music to pause" : "Using normal media volume; music may duck");
-            scheduler.after(request.options.boost ? 100 : 150, () -> prepare(token,100));
+            output.note(request.options.pauseMusic ? "Waiting for music to pause" : request.options.boost ?
+                "Ducking requested; music may also get louder during boost" : "Using normal media volume; music may duck");
+            int delay=request.options.pauseMusic ? 100 : 150;
+            scheduler.after(delay, () -> prepare(token,delay));
         } catch (RuntimeException error) { output.note("Could not prepare announcement audio"); end("error",true); }
     }
     private boolean live(int token) { return !closed && current != null && !closing && token==generation; }
     private void prepare(int token, int waited) {
         if (!live(token)) return;
         try {
-            if (!current.options.boost) { speak(token); return; }
-            if (output.musicActive()) {
+            if (!current.options.boost && !current.options.pauseMusic) { speak(token); return; }
+            if (current.options.pauseMusic && output.musicActive()) {
                 if (waited < 1500) scheduler.after(100, () -> prepare(token,waited+100));
-                else { output.note("Music kept playing; volume boost skipped"); speak(token); }
+                else { output.note(current.options.boost ? "Music kept playing; volume boost skipped" : "Music kept playing; using normal media volume"); speak(token); }
                 return;
             }
-            // Let buffered Bluetooth music drain before raising the shared volume.
+            // Allow a pause to drain buffered music, or give ducking time to settle.
+            // A focus grant does not confirm how much another player's audio ducks.
             scheduler.after(current.options.gapMs, () -> boost(token));
         } catch (RuntimeException error) { output.note("Audio check failed; volume unchanged"); end("error",true); }
     }
     private void boost(int token) {
         if (!live(token)) return;
         try {
-            if (output.musicActive()) { output.note("Music resumed; volume boost skipped"); speak(token); return; }
+            if (!current.options.boost) { speak(token); return; }
+            if (current.options.pauseMusic && output.musicActive()) { output.note("Music resumed; volume boost skipped"); speak(token); return; }
             int base=output.volume(), max=output.maxVolume();
             int target=Math.max(base, Math.min(max, Math.round(max*current.options.percent/100f)));
             String route=output.route();
@@ -93,7 +98,8 @@ final class AnnouncementAudio {
             output.setVolume(target);
             if (!route.equals(output.route())) { output.note("Audio output changed; announcement cancelled"); end("interrupted",true); return; }
             applied=output.volume();
-            output.note("Announcement volume " + applied + " / " + max + "; music volume will be restored");
+            output.note("Announcement volume " + applied + " / " + max + (current.options.pauseMusic ?
+                "; music volume will be restored" : "; ducking requested, background level depends on player"));
             // Absolute-volume commands can reach a speaker after the local slider changes.
             scheduler.after(current.options.gapMs, () -> speak(token));
         } catch (RuntimeException error) { output.note("Volume boost unavailable"); end("error",true); }
@@ -104,7 +110,7 @@ final class AnnouncementAudio {
             if (original>=0 && !boostedRoute.equals(output.route())) {
                 output.note("Audio output changed; announcement cancelled"); end("interrupted",true); return;
             }
-            if (original>=0 && output.musicActive()) {
+            if (original>=0 && current.options.pauseMusic && output.musicActive()) {
                 restore(); output.note("Music resumed; volume boost skipped");
                 scheduler.after(current.options.gapMs, () -> speak(token)); return;
             }
@@ -148,7 +154,7 @@ final class AnnouncementAudio {
         if (stop) { try { output.stop(); } catch (RuntimeException ignored) {} }
         restore();
         // Keep focus until the restored level has had time to reach the speaker.
-        int delay=focused && current.options.boost ? current.options.gapMs : 0;
+        int delay=focused && (current.options.boost || current.options.pauseMusic) ? current.options.gapMs : 0;
         scheduler.after(delay, () -> {
             if (closed || token!=generation || current==null) return;
             release();
