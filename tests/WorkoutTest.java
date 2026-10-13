@@ -41,10 +41,12 @@ public final class WorkoutTest {
         session.record(11000,"heartRate","100");
         session.record(12000,"score","rally 1 - 0 - 2");
         session.record(41000,"heartRate","125");
+        session.record(41500,"notifyHeartRate","130");
         session.record(42000,"finish","Finished");
         check(session.elapsed(5000)==32000,"Elapsed time never goes backwards");
         Document doc=tcx(session.file);
         check(doc.getElementsByTagName("Trackpoint").getLength()==2,"No synthetic HR through a 30-second gap");
+        check(doc.getElementsByTagName("Value").getLength()==2,"Notify events without measurement timestamps stay in CSV only");
         check(doc.getElementsByTagName("Time").item(0).getTextContent().equals(WorkoutSession.utc(start+1000)),"Sample timestamp from monotonic offset");
         check(doc.getElementsByTagName("Time").item(1).getTextContent().equals(WorkoutSession.utc(start+31000)),"Gap preserved in TCX");
         check(doc.getElementsByTagName("TotalTimeSeconds").item(0).getTextContent().equals("32.0"),"Recorded duration");

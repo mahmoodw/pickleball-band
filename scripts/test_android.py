@@ -14,6 +14,6 @@ classpath = os.pathsep.join(map(str, [json_jar, platform / 'android.jar', root /
 subprocess.run([str(jdk / 'bin/javac'), '-cp', classpath, '-d', str(out),
                 *map(str, sorted((root / 'android/src').rglob('*.java'))),
                 *map(str, sorted((root / 'tests').glob('*.java')))], check=True)
-for name in ['ScoreTest', 'BandSelectionTest', 'AndroidTransportTest', 'MediaRemoteTest', 'AnnouncementAudioTest', 'WorkoutTest']:
+for name in ['ScoreTest', 'BandSelectionTest', 'AndroidTransportTest', 'MediaRemoteTest', 'AnnouncementAudioTest', 'WorkoutTest', 'NotifyHeartEventsTest']:
     subprocess.run([str(jdk / 'bin/java'), '-cp', str(out) + os.pathsep + classpath,
                     'com.wmahmood.pickleball.' + name], check=True)

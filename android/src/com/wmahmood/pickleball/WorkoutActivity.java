@@ -38,11 +38,23 @@ public class WorkoutActivity extends Activity {
         scroll.setOnApplyWindowInsetsListener((v,insets) -> { v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom()); return insets.consumeSystemWindowInsets(); });
         scroll.addView(body); setContentView(scroll);
         label(body,"WORKOUT LAB",24);
-        label(body,"Enable heart-rate broadcasting on the band, keep Notify connected, and open Pickleball Lab. Do not start a native workout for this test.",16);
+        label(body,"Try Notify events with heart-rate sharing OFF on the band. Keep Notify connected and Pickleball Lab open. In Notify, enable Smart assistant → Tasker integration and normal heart monitoring if available. Tasker itself is not required.",16);
         source=label(body,"",16);
+        button(body,"Use Notify events (test)",() -> {
+            getSharedPreferences(WorkoutService.PREFS,0).edit().putString("sourceMode","notify").apply();
+            retry(); render(); feedback.setText("Notify source selected. Start a session, then Test Notify events. Heart-rate event support is not confirmed for this Notify version.");
+        });
+        button(body,"Test Notify events",() -> {
+            if (WorkoutService.active==null || !getSharedPreferences(WorkoutService.PREFS,0).getString("sourceMode","ble").equals("notify")) {
+                feedback.setText("Choose Use Notify events and start a session first."); return;
+            }
+            startService(new Intent(this,WorkoutService.class).setAction("notifyProbe"));
+            feedback.setText("Requested a battery reading from Notify. Check the event counters below; sending a request does not confirm delivery. Notify's optional command password may block this probe.");
+        });
+        label(body,"Bluetooth sharing alternative (locks the tested Band 10 to its sharing screen):",15);
         button(body,"Find heart-rate source",this::scan);
         button(body,"Check already connected devices",this::connectedDevices);
-        button(body,"Use timer only",() -> { getSharedPreferences(WorkoutService.PREFS,0).edit().remove("source").remove("sourceName").apply(); retry(); render(); });
+        button(body,"Use timer only",() -> { getSharedPreferences(WorkoutService.PREFS,0).edit().putString("sourceMode","timer").remove("source").remove("sourceName").apply(); retry(); render(); });
         start=button(body,"Start test session",this::startSession);
         button(body,"Retry heart rate",this::retry);
         stop=button(body,"Finish session",() -> { if (WorkoutService.active!=null) startService(new Intent(this,WorkoutService.class).setAction("stop")); });
@@ -52,7 +64,7 @@ public class WorkoutActivity extends Activity {
         button(body,"Export diagnostic CSV",() -> chooseExport(false));
         button(body,"Back to announcer",this::finish);
         feedback=label(body,"",15);
-        label(body,"The phone records timing and received heart rate, including when its screen is off. Watch the sample count and last-reading age: a Bluetooth connection alone does not prove live data. Missing readings stay missing. TCX can be imported manually into Notify; distance and calories are not measured. Stopping the announcer does not stop this recorder; use Finish session.",15);
+        label(body,"Notify events are an experimental compatibility test. The current Xiaomi API does not promise HR events. HR and battery events are counted separately. Notify-reported HR is saved in CSV with receipt time; its measurement time is unknown, so it is excluded from TCX. Bluetooth HR readings still export to TCX for manual import. Missing readings stay missing. Stopping the announcer does not stop this recorder; use Finish session.",15);
     }
     private TextView label(LinearLayout parent,String text,int size) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(size); v.setTextColor(Color.WHITE); v.setPadding(0,12,0,14); parent.addView(v); return v;
@@ -78,7 +90,7 @@ public class WorkoutActivity extends Activity {
             .setAdapter(choices,(d,index) -> {
                 BluetoothDevice device=new ArrayList<>(devices.values()).get(index);
                 try {
-                    getSharedPreferences(WorkoutService.PREFS,0).edit().putString("source",device.getAddress()).putString("sourceName",name(device)).apply();
+                    getSharedPreferences(WorkoutService.PREFS,0).edit().putString("sourceMode","ble").putString("source",device.getAddress()).putString("sourceName",name(device)).apply();
                     feedback.setText("Source saved. Start a session, or tap Retry heart rate during a session."); render();
                 } catch (SecurityException e) { feedback.setText("Bluetooth permission was removed. Grant access and retry."); }
             }).setNegativeButton("Close",null).create();
@@ -120,6 +132,10 @@ public class WorkoutActivity extends Activity {
     private void stopScan() { main.removeCallbacks(scanTimeout); if (scanner!=null) { try { scanner.stopScan(scanCallback); } catch (RuntimeException ignored) {} scanner=null; } }
     private void startSession() {
         if (!permissions() || WorkoutService.active!=null) return;
+        SharedPreferences prefs=getSharedPreferences(WorkoutService.PREFS,0);
+        if (prefs.getString("sourceMode","ble").equals("ble") && prefs.getString("source","").isEmpty()) {
+            feedback.setText("Choose Use Notify events, a Bluetooth source, or Use timer only before starting."); return;
+        }
         if (Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},21);
         try { startForegroundService(new Intent(this,WorkoutService.class).setAction("start")); }
@@ -128,14 +144,15 @@ public class WorkoutActivity extends Activity {
     private void retry() { if (WorkoutService.active!=null && permissions()) startService(new Intent(this,WorkoutService.class).setAction("retry")); }
     private void render() {
         SharedPreferences p=getSharedPreferences(WorkoutService.PREFS,0);
-        source.setText("Heart-rate source: "+p.getString("sourceName","Timer only"));
+        String mode=p.getString("sourceMode","ble");
+        source.setText("Heart-rate source: "+(mode.equals("notify") ? "Notify events (experimental)" : mode.equals("timer") ? "Timer only" : p.getString("sourceName","None selected")));
         WorkoutService recorder=WorkoutService.active;
         start.setEnabled(recorder==null); stop.setEnabled(recorder!=null);
         status.setText(recorder==null ? "Recorder stopped.\n"+p.getString("report","No test session yet.")+ (p.getString("state","").equals("Recording") ? "\nPrevious recording was interrupted; export its saved samples." : "") : recorder.report());
     }
     private void copyReport() {
         SharedPreferences p=getSharedPreferences(WorkoutService.PREFS,0), a=getSharedPreferences(AnnouncerService.PREFS,0);
-        String report="Pickleball Lab 0.1.11-workout.1 / Android API "+Build.VERSION.SDK_INT+"\nRecorder running: "+(WorkoutService.active!=null)+"\n"+
+        String report="Pickleball Lab 0.1.11-workout.2 / Android API "+Build.VERSION.SDK_INT+"\nRecorder running: "+(WorkoutService.active!=null)+"\n"+
             (WorkoutService.active==null ? p.getString("report","No session") : WorkoutService.active.report())+
             "\nAnnouncer running: "+AnnouncerService.running+"\nNotify service visible: "+!NotifyBridge.availablePackage(this).isEmpty()+
             "\nScore connection: "+a.getString("connection","Not started")+"\nVoice: "+a.getString("speech","Not started");

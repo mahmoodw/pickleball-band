@@ -1,37 +1,45 @@
 # Pickleball Lab: experimental workout recording
 
-This branch adds a **phone-based workout and heart-rate compatibility test** to the working Xiaomi Smart Band 10 Pickleball apps. It does not start a native band workout. Actual heart-rate broadcasting alongside Notify and the band app still needs testing on the global Band 10.
+This branch adds a **phone-based workout and heart-rate compatibility test** to the working Xiaomi Smart Band 10 Pickleball apps. It does not start a native band workout. Lab 1 established that heart-rate sharing locks the tested band to its sharing screen. Lab 2 tests phone-side Notify events as an alternative.
 
-The experimental APK and RPK are **additional assets on the [v0.1.11 release](https://github.com/mahmoodw/pickleball-band/releases/tag/v0.1.11)**. Regular v0.1.11 assets remain available. Install both files containing `0.1.11-workout.1`; they appear as **Pickleball Lab** and use the separate package `com.wmahmood.pickleball.workout`. They can coexist with the regular apps and have their own settings and saved game. Source is on `experimental/workout`, tagged `workout-0.1.11-exp1`.
+The experimental APK and RPK are **additional assets on the [v0.1.11 release](https://github.com/mahmoodw/pickleball-band/releases/tag/v0.1.11)**. Regular v0.1.11 assets remain available. For a new Lab installation, use both files containing `0.1.11-workout.2`; they appear as **Pickleball Lab** and use the separate package `com.wmahmood.pickleball.workout`. They can coexist with the regular apps and have their own settings and saved game. Source is on `experimental/workout`, tagged `workout-0.1.11-exp2`.
 
-## Try it
+## Result of the first device test
 
-1. Install `pickleball-phone-0.1.11-workout.1.apk` on Android and `pickleball-band-0.1.11-workout.1.rpk` through Notify. Keep Notify connected. Stop the regular phone announcer during the test.
-2. Open **Pickleball Lab** on the phone, select the band, start its announcer, and open **Pickleball Lab** on the band. Start a game and confirm Speak works.
-3. Enable the band's **heart-rate broadcasting / sharing** setting if available. Do **not** start a native workout; this experiment checks whether it is unnecessary. Firmware and app settings vary, so no particular menu path is assumed.
-4. On the phone, open **Workout Lab → Find heart-rate source**, allow Bluetooth access, select your band, and tap **Start test session**. If the scan finds nothing, **Check already connected devices** can inspect the band already used by Notify; selecting it does not establish HR compatibility. Android 8–11 needs Location permission and the Location switch for BLE discovery; this app does not record location.
-5. On the band, swipe right twice to **Settings → Workout Lab**. Check the heart rate and saved-reading count. Press **Back** to resume scoring. Time and HR status refresh on phone replies, normally every eight seconds while visible. The phone owns the session; start/finish are on the phone.
-6. Record a few rallies, repeat a score, let the band screen sleep for a minute, then wake it. Also test with the phone locked. The sample count should grow while scoring and speech continue. A connection or subscription alone does not establish fresh data.
-7. Tap **Copy workout diagnostics** on the phone. It reports last-reading age, saved sample count, band messages and announcer status, excluding device names and Bluetooth addresses. **Finish session** stops recording and disconnects only this app's HR client. Stopping the announcer is separate.
+The Bluetooth reader works: the user's Band 10 supplied **23 HR readings** while its **Heart rate sharing** screen was open. Leaving that screen turns sharing off and disconnects the HR client. This does **not** solve scoring alongside heart-rate tracking. During a separate timer-only test, Notify carried 15 status queries and 6 score messages, so Interconnect is working.
 
-See [test details and interpretation](docs/WORKOUT-LAB.md). If broadcasting cannot run independently or interferes with Notify, finish the test and use the regular pair; no pairing changes are made by these apps.
+## Try Lab 2: Notify events
+
+**Only the phone APK needs updating** from Lab 1; its band app is compatible. The matching Lab 2 RPK is also included as an additional asset. Both use the same Lab package and certificate as before; install updates in place to retain Lab settings and recordings. Regular Pickleball remains a separate app.
+
+1. Install `pickleball-phone-0.1.11-workout.2.apk`. Keep the Lab announcer and Notify connected, and open Pickleball Lab on the band. Leave **Heart rate sharing off** and do not start a native workout.
+2. In **Notify → Smart assistant → Tasker integration**, enable integration. Tasker itself is not needed. Enable normal heart monitoring in Notify; choose **Notify app mode** if your version offers it. Use a supported interval that will produce a new reading during the test, such as one minute. The Lab app does not change these settings or issue heart-monitor start/stop commands.
+3. On the phone, open **Workout Lab → Use Notify events (test) → Start test session → Test Notify events**. The last button sends only Notify's documented battery-read request to check event delivery. If you configured a command password in Notify, this request may be ignored; the Lab app does not request or transmit your password.
+4. Keep using Pickleball on the band for at least two monitoring intervals. **Notify HR events** and **Notify other events** are counted separately. Battery/connection messages never become HR samples. New events can update the existing band **Settings → Workout Lab** screen.
+5. **Finish session**, then use **Copy workout diagnostics**. If needed, export the diagnostic CSV. Notify HR values are stored with phone receipt time; their actual measurement time is unknown, so they are **excluded from TCX**.
+
+This is a **compatibility probe**, not a confirmed solution. [Notify's current Xiaomi API page](https://www.mibandnotify.com/help/tasker_xiaomi_help.php) documents the integration, battery events and heart-monitor commands, but does **not** list a heart-rate event. The probed `com.mc.xiaomi.heartRateGot` and legacy `com.mc.miband.heartRateGot` actions come from community examples; another project reported unreliable delivery. Registered listeners and sent commands do not establish support. There are no direct BLE connections in Notify mode.
+
+If other events arrive but HR does not, the missing capability is HR event delivery (or a missing fresh Notify measurement), not the scoring bridge. If no events arrive, that result cannot distinguish unsupported/directed events, disabled integration or restrictions on delivery. Keep the regular app available; the experiment does not replace it.
+
+See [test details and interpretation](docs/WORKOUT-LAB.md).
 
 ## What this version records
 
 - Session elapsed time using Android's monotonic clock.
-- Actual received heart-rate samples, at most one saved sample per second. Repeated BPM values from fresh packets are valid; no packets means no new samples.
+- Actual received heart-rate values, at most one saved sample per second. Notify reports are distinguished from Bluetooth sensor packets in the CSV. Repeated BPM values from fresh packets are valid; no packets means no new samples.
 - Received score snapshots and actions in a diagnostic CSV, plus band visibility reports and connection probes. This is not a complete offline rally history: reconnect sync contains the latest score only.
 - A separate file for each session, saved privately on the phone. Samples are appended and synced to storage. After process interruption, the file remains exportable; duration ends at the last saved event, and recording does not automatically restart.
 
 **No native Xiaomi workout is created.** Steps, GPS, calories, training load and recovery are not measured. The band RPK does not use an undocumented heart-rate API or keep its display awake.
 
-After finishing a session, use **Export session as TCX** for manual import into Notify, or **Export diagnostic CSV** to inspect sample timing. TCX uses `Other` as its sport. Its required distance/calorie fields are zero placeholders, explicitly described in the activity notes. HR gaps remain gaps. Notify import on this exact app/model combination still needs a real-device check; no background database insertion is implemented. Export requires choosing a destination and never uploads data automatically.
+After finishing a session, use **Export session as TCX** for manual import into Notify, or **Export diagnostic CSV** to inspect sample timing. TCX uses `Other` as its sport. Its required distance/calorie fields are zero placeholders, explicitly described in the activity notes. HR gaps remain gaps. Notify compatibility events are excluded from TCX because their measurement timestamps are not supplied; they remain in the diagnostic CSV. Notify import on this exact app/model combination still needs a real-device check; no background database insertion is implemented. Export requires choosing a destination and never uploads data automatically.
 
 ## Existing Pickleball controls
 
 The score rules, turnover speech, correction/undo, large rally buttons, center tap/hold gestures, music controls and announcement-volume options are inherited from v0.1.11. The only added band navigation is **Settings → Workout Lab**. See the [regular app guide](https://github.com/mahmoodw/pickleball-band/blob/v0.1.11/README.md) for those features.
 
-![Band layout preview](docs/band-ui-0.1.11-workout.1.png)
+![Band layout preview (unchanged from Lab 1)](docs/band-ui-0.1.11-workout.1.png)
 
 ## Build and validation
 

@@ -13,6 +13,8 @@ public class WorkoutService extends Service {
     private final Handler main=new Handler(Looper.getMainLooper());
     private WorkoutSession session;
     private HeartRateClient heart;
+    private NotifyHeartClient notifyHeart;
+    private String sourceMode="", closedNotifyReport="";
     private String hrStatus="No heart-rate source selected", error="";
     private long lastHr=-1, lastSavedHr=-1, lastBand=-1, samples, bandQueries, scores, hiddenSamples;
     private int bpm;
@@ -47,24 +49,44 @@ public class WorkoutService extends Service {
                 finish("Save failed");
             }
         } else if ("retry".equals(action)) connectHeart();
+        if ("notifyProbe".equals(action) && notifyHeart!=null) notifyHeart.probe();
         saveStatus(); return START_NOT_STICKY;
     }
     private void connectHeart() {
-        if (heart!=null) heart.close(); heart=null; lastHr=-1; bpm=0;
+        if (heart!=null) heart.close(); heart=null;
+        if (notifyHeart!=null) { closedNotifyReport=notifyHeart.report(); notifyHeart.close(); } notifyHeart=null;
+        lastHr=-1; bpm=0;
+        sourceMode=getSharedPreferences(PREFS,0).getString("sourceMode","ble");
+        record("source",sourceMode);
+        if (sourceMode.equals("notify")) {
+            hrStatus="Waiting for Notify HR events. Enable Tasker integration and normal heart monitoring in Notify.";
+            notifyHeart=new NotifyHeartClient(this,new NotifyHeartClient.Listener() {
+                public void sample(int value) {
+                    hrStatus="Notify HR event received; measurement time was not supplied.";
+                    acceptSample(value);
+                }
+                public void changed() { saveStatus(); }
+            });
+            notifyHeart.start(); return;
+        }
+        if (sourceMode.equals("timer")) { hrStatus="Timer only selected"; return; }
         String address=getSharedPreferences(PREFS,0).getString("source","");
         if (address.isEmpty()) { hrStatus="No heart-rate source selected. Timer still records."; return; }
         heart=new HeartRateClient(this,new HeartRateClient.Listener() {
             public void status(String value) { hrStatus=value; saveStatus(); }
-            public void sample(int value) {
-                long time=now(); bpm=value; lastHr=time;
-                if (lastSavedHr>=0 && time-lastSavedHr<1000) return;
-                if (record("heartRate",Integer.toString(value))) {
-                    lastSavedHr=time; samples++; if (haveVisibility && !bandVisible) hiddenSamples++;
-                }
-                saveStatus();
-            }
+            public void sample(int value) { acceptSample(value); }
         });
         heart.connect(address);
+    }
+    private void acceptSample(int value) {
+        long time=now(); bpm=value; lastHr=time;
+        if (lastSavedHr>=0 && time-lastSavedHr<1000) return;
+        // Notify's compatibility event supplies no measurement timestamp. Keep it
+        // separately named; it is a reported reading, not verified live sensor HR.
+        if (record(sourceMode.equals("notify") ? "notifyHeartRate" : "heartRate",Integer.toString(value))) {
+            lastSavedHr=time; samples++; if (haveVisibility && !bandVisible) hiddenSamples++;
+        }
+        saveStatus();
     }
     private boolean record(String event,String value) {
         if (session==null || stopped || !error.isEmpty()) return false;
@@ -87,7 +109,7 @@ public class WorkoutService extends Service {
         long age=recorder.lastHr<0 ? -1 : now()-recorder.lastHr;
         return out.put("elapsed",recorder.session.elapsed(now())/1000).put("samples",recorder.samples)
             .put("bpm",HeartRateMeasurement.fresh(recorder.lastHr,now()) ? recorder.bpm : 0).put("hrAge",age<0 ? -1 : age/1000)
-            .put("message",!recorder.error.isEmpty() ? "Storage error on phone" : age<0 ? "Waiting for heart rate" : age>15000 ? "Heart rate is stale" : "Heart rate received");
+            .put("message",!recorder.error.isEmpty() ? "Storage error on phone" : age<0 ? "Waiting for heart rate" : age>15000 ? "Heart rate is stale" : recorder.sourceMode.equals("notify") ? "Notify reported HR" : "Heart rate received");
     }
     static void score(Score value) {
         WorkoutService recorder=active;
@@ -102,21 +124,26 @@ public class WorkoutService extends Service {
     String report() {
         long age=lastHr<0 ? -1 : Math.max(0,(now()-lastHr)/1000);
         return "Session: "+(stopped ? "Finished" : "Recording")+"\nElapsed: "+(session==null ? 0 : session.elapsed(now())/1000)+" s"+
-            "\nHeart-rate link: "+hrStatus+"\nHeart rate: "+(HeartRateMeasurement.fresh(lastHr,now()) ? bpm+" bpm" : "No fresh reading")+
-            "\nLast HR sample age: "+(age<0 ? "none" : age+" s")+"\nSaved HR samples: "+samples+
+            "\nHeart-rate source mode: "+sourceMode+
+            "\nHeart-rate link: "+hrStatus+"\nHeart rate: "+(HeartRateMeasurement.fresh(lastHr,now()) ? bpm+" bpm" : "No recent reading")+
+            (sourceMode.equals("notify") ? " (Notify report; measurement age unknown)\nLast HR event receipt age: " : "\nLast HR sample receipt age: ")+
+            (age<0 ? "none" : age+" s")+"\nSaved HR samples: "+samples+
             "\nSamples while band last reported hidden: "+hiddenSamples+"\nBand status requests: "+bandQueries+
             "\nScore messages received: "+scores+"\nLast band message age: "+(lastBand<0 ? "none" : (now()-lastBand)/1000+" s")+
+            (notifyHeart!=null ? "\n"+notifyHeart.report() : closedNotifyReport.isEmpty() ? "" : "\nLast listener (closed):\n"+closedNotifyReport)+
             (error.isEmpty() ? "" : "\n"+error);
     }
     private void finish(String reason) {
         if (!stopped) record("finish",reason);
         stopped=true; main.removeCallbacksAndMessages(null);
         if (heart!=null) heart.close(); heart=null;
+        if (notifyHeart!=null) { closedNotifyReport=notifyHeart.report(); notifyHeart.close(); notifyHeart=null; }
         saveStatus(); stopSelf();
     }
     @Override public void onDestroy() {
         if (!stopped) { record("interrupted","Recorder stopped by Android"); stopped=true; saveStatus(); }
         main.removeCallbacksAndMessages(null); if (heart!=null) heart.close();
+        if (notifyHeart!=null) notifyHeart.close();
         if (active==this) active=null;
         super.onDestroy();
     }

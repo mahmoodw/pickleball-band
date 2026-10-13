@@ -1,8 +1,8 @@
 {
   "package": "com.wmahmood.pickleball.workout",
   "name": "Pickleball Lab",
-  "versionName": "0.1.11-workout.1",
-  "versionCode": 1,
+  "versionName": "0.1.11-workout.2",
+  "versionCode": 2,
   "minPlatformVersion": 1200,
   "icon": "/common/icon.png",
   "deviceTypeList": [

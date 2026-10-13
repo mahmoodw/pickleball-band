@@ -21,9 +21,9 @@ with ZipFile(dist / ('pickleball-source-' + version + '.zip'), 'w', ZIP_DEFLATED
     for path in sorted(sources):
         z.write(path, Path('pickleball-band') / path.relative_to(root))
 artifacts = ['pickleball-band-' + version + '.rpk', 'pickleball-phone-' + version + '.apk', 'pickleball-source-' + version + '.zip', 'README.md', 'THIRD_PARTY.md']
-(dist / 'WORKOUT-SHA256SUMS').write_text(''.join(hashlib.sha256((dist/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in artifacts))
+(dist / 'WORKOUT-2-SHA256SUMS').write_text(''.join(hashlib.sha256((dist/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in artifacts))
 with ZipFile(dist / ('pickleball-prototype-' + version + '.zip'), 'w', ZIP_DEFLATED) as z:
-    for name in artifacts + ['WORKOUT-SHA256SUMS']:
+    for name in artifacts + ['WORKOUT-2-SHA256SUMS']:
         z.write(dist / name, name)
 for name in artifacts + ['pickleball-prototype-' + version + '.zip']:
     print(name, (dist / name).stat().st_size, 'bytes')

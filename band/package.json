@@ -1,6 +1,6 @@
 {
   "name": "pickleball-band-app",
-  "version": "0.1.11-workout.1",
+  "version": "0.1.11-workout.2",
   "private": true,
   "scripts": {
     "build": "aiot build",
