@@ -180,7 +180,7 @@ public class AnnouncerService extends Service {
         ++sendAttempt;
     }
     private void hello() {
-        try { send(new JSONObject().put("type", "hello").put("challenge", challenge).put("mediaVersion", 1)); } catch (Exception ignored) {}
+        try { send(new JSONObject().put("type", "hello").put("challenge", challenge).put("mediaVersion", 1).put("workoutVersion", 1)); } catch (Exception ignored) {}
     }
     private void receive(String from, byte[] bytes) {
         if (destroyed || node == null || !node.equals(from) || bytes == null || bytes.length > 8192) return;
@@ -193,6 +193,14 @@ public class AnnouncerService extends Service {
                 hello(); return;
             }
             if (challenge.isEmpty() || !challenge.equals(p.optString("challenge"))) { hello(); return; }
+            if ("workoutQuery".equals(p.optString("type"))) {
+                String session=p.optString("session", "");
+                long sequence=p.optLong("sequence",-1);
+                if (p.optInt("version")!=1 || session.isEmpty() || session.length()>80 || sequence<0) return;
+                JSONObject reply=WorkoutService.snapshot(this,p.optBoolean("visible",true));
+                reply.put("type","workoutStatus").put("session",session).put("sequence",sequence).put("challenge",challenge);
+                send(reply); return;
+            }
             if ("media".equals(p.optString("type"))) {
                 JSONObject reply = media.receive(p, this::controlMedia);
                 if (reply != null) {
@@ -206,6 +214,7 @@ public class AnnouncerService extends Service {
             String details = "Us " + score.us + "   |   Them " + score.them + "\n" +
                 (score.winner() >= 0 ? "Game over" : (score.serving == 0 ? "We serve" : "They serve") + (score.mode.equals("doubles") ? ", server " + score.server : ""));
             getSharedPreferences(PREFS, 0).edit().putString("score", score.call()).putString("details", details).apply();
+            WorkoutService.score(score);
             status("Band app connected");
             if (score.action.equals("sync")) {
                 media.sync(score.session);
@@ -287,7 +296,7 @@ public class AnnouncerService extends Service {
     private Notification notification(String text) {
         PendingIntent open = PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(this,1,new Intent(this,AnnouncerService.class).setAction("stop"),PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this,"announcer").setContentTitle("Pickleball announcer").setContentText(text)
+        return new Notification.Builder(this,"announcer").setContentTitle("Pickleball Lab announcer").setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentIntent(open).setOngoing(true)
             .addAction(new Notification.Action.Builder(null,"Stop",stop).build()).build();
     }

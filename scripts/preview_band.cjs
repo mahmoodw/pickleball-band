@@ -8,9 +8,12 @@ const source=fs.readFileSync(root+'/band/src/pages/game/game.ux','utf8');
 const template=source.split('<template>')[1].split('</template>')[0];
 let css=source.split('<style>')[1].split('</style>')[0];
 css=css.replace(/lines:\s*(\d+);/g,(_,n)=>'--vela-lines: '+n+';'+(n==='1'?' white-space: nowrap;':''));
-const base={screen:'game',pageIndex:2,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',rallyServe:'We serve',rallyDetail:'8 - 6 - 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
+const base={workoutTime:'1:15',workoutBpm:'125 bpm',workoutInfo:'Heart rate received',workoutSamples:'50 readings saved',screen:'game',pageIndex:2,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',rallyServe:'We serve',rallyDetail:'8 - 6 - 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
 const scenes=[
  {name:'Settings',state:{pageIndex:0}},
+ {name:'Workout · live',state:{screen:'workout'}},
+ {name:'Workout · stale',state:{screen:'workout',workoutBpm:'— bpm',workoutInfo:'Status stale · Refresh'}},
+ {name:'Workout · start',state:{screen:'workout',workoutTime:'Ready',workoutBpm:'— bpm',workoutInfo:'Start session on phone',workoutSamples:'0 readings saved'}},
  {name:'Live score',state:{pageIndex:1}},
  {name:'Play · opens first',state:{}},
  {name:'Music',state:{pageIndex:3}},

@@ -1,19 +1,28 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.wmahmood.pickleball" android:versionCode="12" android:versionName="0.1.11">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.wmahmood.pickleball.workout" android:versionCode="1" android:versionName="0.1.11-workout.1">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+  <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
   <queries>
     <package android:name="com.mc.xiaomi1" />
     <package android:name="com.mc.xiaomi1.huawei" />
     <intent><action android:name="com.xiaomi.wearable.XMS_WEARABLE_SERVICE" /></intent>
     <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
   </queries>
-  <application android:label="Pickleball" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
-    <activity android:name=".MainActivity" android:exported="true">
+  <application android:label="Pickleball Lab" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+    <activity android:name="com.wmahmood.pickleball.MainActivity" android:exported="true">
       <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
     </activity>
-    <service android:name=".AnnouncerService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+    <service android:name="com.wmahmood.pickleball.AnnouncerService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+    <activity android:name="com.wmahmood.pickleball.WorkoutActivity" android:exported="false" />
+    <service android:name="com.wmahmood.pickleball.WorkoutService" android:exported="false" android:foregroundServiceType="connectedDevice" />
   </application>
 </manifest>

@@ -126,6 +126,18 @@ public final class AndroidTransportTest {
         control.put("challenge","obsolete");
         call(service,"receive",new Class<?>[]{String.class,byte[].class},"",control.toString().getBytes(StandardCharsets.UTF_8));
         check(packets.get(packets.size()-1).getString("type").equals("hello"),"Old challenge dispatched media instead of re-handshaking");
+        JSONObject query=new JSONObject().put("type","workoutQuery").put("version",1).put("session","lab-session")
+            .put("sequence",3).put("challenge","test-challenge").put("visible",true);
+        call(service,"receive",new Class<?>[]{String.class,byte[].class},"",query.toString().getBytes(StandardCharsets.UTF_8));
+        JSONObject workoutReply=packets.get(packets.size()-1);
+        check(workoutReply.getString("type").equals("workoutStatus"),"Workout query was not routed separately");
+        check(workoutReply.getString("session").equals("lab-session") && workoutReply.getLong("sequence")==3,"Workout reply lost request identity");
+        check(workoutReply.getString("challenge").equals("test-challenge"),"Workout reply lost handshake identity");
+        check(!workoutReply.getBoolean("running") && workoutReply.getInt("bpm")==0,"Stopped recorder reported live heart rate");
+        check(!prefs.containsKey("score") && !prefs.containsKey("speech"),"Workout query altered scoring or speech");
+        before=packets.size(); query.put("version",2);
+        call(service,"receive",new Class<?>[]{String.class,byte[].class},"",query.toString().getBytes(StandardCharsets.UTF_8));
+        check(packets.size()==before,"Unsupported workout protocol accepted");
         System.out.println(checks+" Android reply/cleanup checks passed");
     }
 }

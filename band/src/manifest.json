@@ -1,17 +1,37 @@
 {
-  "package": "com.wmahmood.pickleball",
-  "name": "Pickleball",
-  "versionName": "0.1.11",
-  "versionCode": 12,
+  "package": "com.wmahmood.pickleball.workout",
+  "name": "Pickleball Lab",
+  "versionName": "0.1.11-workout.1",
+  "versionCode": 1,
   "minPlatformVersion": 1200,
   "icon": "/common/icon.png",
-  "deviceTypeList": ["watch"],
-  "features": [
-    {"name": "system.storage"},
-    {"name": "system.interconnect"},
-    {"name": "system.vibrator"}
+  "deviceTypeList": [
+    "watch"
   ],
-  "config": {"logLevel": "error", "designWidth": 212},
-  "display": {"backgroundColor": "#071510"},
-  "router": {"entry": "pages/game", "pages": {"pages/game": {"component": "game"}}}
+  "features": [
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.interconnect"
+    },
+    {
+      "name": "system.vibrator"
+    }
+  ],
+  "config": {
+    "logLevel": "error",
+    "designWidth": 212
+  },
+  "display": {
+    "backgroundColor": "#071510"
+  },
+  "router": {
+    "entry": "pages/game",
+    "pages": {
+      "pages/game": {
+        "component": "game"
+      }
+    }
+  }
 }

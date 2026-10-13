@@ -26,7 +26,7 @@ function harness(saved = '', failWrite = false) {
   Object.assign(page,JSON.parse(JSON.stringify(page.private)));
   page.$element = () => ({swipeTo: ({index}) => page.pageChanged({index})});
   page.onInit();
-  const hello = (mediaVersion = 1) => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge',mediaVersion})});
+  const hello = (mediaVersion = 1, workoutVersion = 0) => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge',mediaVersion,workoutVersion})});
   const settle = () => { now += 400; page.pageTouchStart({touches:[{clientX:106,clientY:260}]}); };
   const visit = index => { page.pageChanged({index}); settle(); };
   return {page,conn,sent,requests,writes,hello,timers,intervals,diagnoses,makeConnection,
@@ -304,4 +304,38 @@ test('late music replies and send failures cannot replace a newer command result
   ack(next,'Volume 5 / 15'); assert.equal(h.page.musicStatus,'Volume 5 / 15');
   h.page.musicQuieter(); assert.equal(h.sent.at(-1).action,'volumeDown');
   h.page.onDestroy(); assert.equal(h.timers.size,0);
+});
+
+test('workout queries preserve scoring and reject stale replies', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello(1,1);
+  assert.equal(h.sent.at(-1).action,'sync');
+  const sync=h.sent.at(-1);
+  h.conn.onmessage({data:{type:'ack',session:sync.session,sequence:sync.sequence,status:'synced'}});
+  const query=h.sent.find(p=>p.type==='workoutQuery');
+  assert.equal(query.visible,true);
+  h.visit(0); h.page.showWorkout();
+  const current=h.sent.at(-1), before=h.writes.length;
+  assert.equal(h.page.screen,'workout');
+  const reply=(packet,bpm)=>h.conn.onmessage({data:{type:'workoutStatus',session:packet.session,sequence:packet.sequence,challenge:'test-challenge',running:true,elapsed:75,bpm,samples:50,message:'Heart rate received'}});
+  reply(query,200); assert.equal(h.page.workoutBpm,'— bpm');
+  reply(current,125); assert.equal(h.page.workoutBpm,'125 bpm'); assert.equal(h.page.workoutTime,'1:15');
+  assert.equal(h.page.workoutSamples,'50 readings saved'); assert.equal(h.writes.length,before);
+  for(const f of [...h.timers.values()]) f();
+  assert.equal(h.page.workoutBpm,'— bpm'); assert.equal(h.page.workoutInfo,'Status stale · Refresh');
+  h.page.workoutBack(); assert.equal(h.page.pageIndex,0);
+  h.page.onHide(); assert.equal(h.sent.at(-1).type,'workoutQuery'); assert.equal(h.sent.at(-1).visible,false);
+  h.page.onShow(); h.hello(1,1);
+  assert.equal(h.sent.filter(p=>p.type==='workoutQuery').at(-1).visible,true);
+  h.page.onDestroy(); assert.equal(h.timers.size,0);
+});
+test('workout status refresh cannot replay rallies and is unavailable on the regular phone', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  h.visit(0); h.page.showWorkout(); const count=h.sent.length;
+  h.page.refreshWorkout(); assert.equal(h.sent.length,count);
+  assert.equal(h.writes.length,0);
+  h.hello(1,1); h.page.onShow(); h.hello(1,1);
+  const before=h.sent.length;
+  for(const f of h.intervals.values()) f();
+  assert.equal(h.sent.length,before+1); assert.equal(h.sent.at(-1).type,'workoutQuery');
+  assert.equal(h.writes.length,0);
 });

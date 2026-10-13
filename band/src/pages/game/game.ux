@@ -11,6 +11,7 @@
       <text class="menuCall">{{scoreCall}}</text>
       <div class="button" onclick="connectionSettings"><text class="buttonText">Phone connection</text></div>
       <div class="button" onclick="settings"><text class="buttonText">New game</text></div>
+      <div class="button" onclick="showWorkout"><text class="buttonText">Workout Lab</text></div>
       <div class="button" onclick="showRally"><text class="buttonText">Back to play</text></div>
       <text class="musicHint">Swipe left: live score</text>
     </div>
@@ -99,6 +100,16 @@
         <div if="{{hasGame}}" class="smallButton half" onclick="back"><text class="smallText">Cancel</text></div>
       </div>
     </div>
+    <div if="{{screen === 'workout'}}" class="panel">
+      <text class="title">Workout Lab</text>
+      <text class="workoutTime">{{workoutTime}}</text>
+      <text class="workoutBpm">{{workoutBpm}}</text>
+      <text class="workoutInfo">{{workoutInfo}}</text>
+      <text class="workoutInfo">{{workoutSamples}}</text>
+      <text class="workoutHint">Start / finish on phone</text>
+      <div class="button primary" onclick="refreshWorkout"><text class="primaryText">Refresh</text></div>
+      <div class="smallButton wide" onclick="workoutBack"><text class="smallText">Back</text></div>
+    </div>
     <div if="{{screen === 'connection'}}" class="panel">
       <text class="title">Phone link</text>
       <text class="linkStatus">{{phoneStatus}}</text>
@@ -125,17 +136,21 @@ let linkGeneration = 0, alive = false;
 let busy = false;
 let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUntil = 0;
 let badgeHandled = false;
+let workoutSequence = 0, workoutReply = 0, workoutTimer, workoutVisible = true;
 export default {
   private: {
     screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '', rallyServe: '', rallyDetail: '',
     phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', connectionReturnIndex: 2, formReturnIndex: 2, notice: '', editUs: 0, editThem: 0,
     editServing: 'Us', editServer: 2, isDoubles: true,
     newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: '',
-    pageIndex: 2, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false
+    pageIndex: 2, musicStatus: 'Start music on your phone', mediaAvailable: false, musicBusy: false,
+    workoutAvailable: false, workoutTime: 'Ready', workoutBpm: '— bpm',
+    workoutInfo: 'Open Workout Lab on phone', workoutSamples: 'No readings yet'
   },
   onInit() {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
     mediaSequence = 0; dragged = false; ignoreTapUntil = 0; badgeHandled = false;
+    workoutSequence = 0; workoutReply = 0; workoutVisible = true;
     session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     this.refreshConnection(false);
     storage.get({key: 'pickleball.game.v1', default: '', success: value => {
@@ -147,16 +162,18 @@ export default {
     }, fail: () => { this.newWarning = 'Could not read saved game.'; this.screen = 'new'; this.hello(); }});
   },
   onShow() {
+    workoutVisible = true;
     this.refreshConnection(false);
     clearInterval(heartbeat);
     heartbeat = setInterval(() => {
       if (!challenge) this.hello();
+      else this.queryWorkout();
     }, 8000);
   },
-  onHide() { clearInterval(heartbeat); badgeHandled = true; },
+  onHide() { workoutVisible = false; this.queryWorkout(); clearInterval(heartbeat); badgeHandled = true; },
   onDestroy() {
     alive = false; ++linkGeneration;
-    clearInterval(heartbeat); clearTimeout(ackTimer); clearTimeout(mediaTimer);
+    clearInterval(heartbeat); clearTimeout(ackTimer); clearTimeout(mediaTimer); clearTimeout(workoutTimer);
     this.unbindConnection();
   },
   unbindConnection() {
@@ -178,6 +195,8 @@ export default {
     // handshake; never replace the saved game to refresh communication.
     const generation = ++linkGeneration;
     challenge = ''; clearTimeout(ackTimer);
+    this.workoutAvailable = false; clearTimeout(workoutTimer);
+    this.workoutBpm = '— bpm'; this.workoutInfo = 'Waiting for phone';
     this.resetMusic('Connecting to phone...');
     this.unbindConnection(); connection = null;
     this.phoneStatus = 'Connecting...';
@@ -208,9 +227,20 @@ export default {
           challenge = msg.challenge;
           this.resetMusic(msg.mediaVersion === 1 ? 'Start music on your phone' : 'Update phone app for music');
           this.mediaAvailable = msg.mediaVersion === 1;
+          this.workoutAvailable = msg.workoutVersion === 1;
+          this.queryWorkout();
           this.phoneStatus = 'Phone connected';
           this.linkDetails = 'Phone handshake received.';
           if (game) this.send('sync');
+        } else if (msg.type === 'workoutStatus' && msg.session === session && msg.challenge === challenge && msg.sequence === workoutSequence && msg.sequence >= workoutReply) {
+          workoutReply = msg.sequence;
+          clearTimeout(workoutTimer);
+          const seconds = Math.max(0, Math.floor(Number(msg.elapsed) || 0));
+          this.workoutTime = msg.running ? Math.floor(seconds / 60) + ':' + ('0' + seconds % 60).slice(-2) : 'Ready';
+          this.workoutBpm = msg.bpm > 0 && msg.bpm <= 255 ? msg.bpm + ' bpm' : '— bpm';
+          this.workoutInfo = typeof msg.message === 'string' ? msg.message.slice(0, 60) : 'Check phone';
+          this.workoutSamples = (Number(msg.samples) || 0) + ' readings saved';
+          workoutTimer = setTimeout(() => { this.workoutBpm = '— bpm'; this.workoutInfo = 'Status stale · Refresh'; }, 16000);
         } else if (msg.type === 'mediaAck' && msg.session === session && msg.sequence === mediaSequence && this.musicBusy) {
           clearTimeout(mediaTimer); this.musicBusy = false;
           this.musicStatus = typeof msg.message === 'string' ? msg.message.slice(0, 60) : 'Music control unavailable';
@@ -242,6 +272,20 @@ export default {
   },
   resetMusic(message) {
     clearTimeout(mediaTimer); this.musicBusy = false; this.mediaAvailable = false; this.musicStatus = message;
+  },
+  showWorkout() {
+    if (this.screen !== 'game' || this.pageIndex !== 0 || !this.canTap() || busy) return;
+    this.screen = 'workout'; this.queryWorkout();
+  },
+  workoutBack() { this.screen = 'game'; this.pageIndex = 0; },
+  refreshWorkout() { if (!challenge) this.hello(); else this.queryWorkout(); },
+  queryWorkout() {
+    if (!alive || !connection || !challenge || !this.workoutAvailable) return;
+    const sent = ++workoutSequence;
+    connection.send({data: {type: 'workoutQuery', version: 1, session, sequence: sent, challenge, visible: workoutVisible}, fail: () => {
+      if (sent !== workoutSequence) return;
+      this.workoutInfo = 'Phone link unavailable'; this.workoutBpm = '— bpm';
+    }});
   },
   pageTouchStart(event) {
     badgeHandled = false;
@@ -450,4 +494,8 @@ export default {
 .linkItem { width: 180px; flex-direction: column; }
 .bodyText { width: 172px; font-size: 15px; line-height: 21px; color: #ffffff; margin-bottom: 16px; }
 .muted { color: #a4b7ac; }
+.workoutTime { width: 176px; height: 48px; font-size: 30px; color: #baf75e; text-align: center; }
+.workoutBpm { width: 176px; height: 52px; font-size: 32px; color: #ffffff; text-align: center; }
+.workoutInfo { width: 176px; height: 46px; font-size: 15px; line-height: 21px; color: #a4d7bf; text-align: center; lines: 2; }
+.workoutHint { width: 176px; height: 32px; font-size: 13px; color: #a4b7ac; text-align: center; }
 </style>
