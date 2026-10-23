@@ -8,7 +8,7 @@ const source=fs.readFileSync(root+'/band/src/pages/game/game.ux','utf8');
 const template=source.split('<template>')[1].split('</template>')[0];
 let css=source.split('<style>')[1].split('</style>')[0];
 css=css.replace(/lines:\s*(\d+);/g,(_,n)=>'--vela-lines: '+n+';'+(n==='1'?' white-space: nowrap;':''));
-const base={screen:'game',pageIndex:2,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',rallyServe:'We serve',rallyDetail:'8 - 6 - 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
+const base={screen:'game',clockTime:'23:59',pageIndex:2,musicStatus:'Start music on your phone',us:8,them:6,serveLabel:'We serve / server 2',rallyServe:'We serve',rallyDetail:'8 - 6 - 2',phoneStatus:'Phone connected',notice:'Doubles / to 11',scoreCall:'8 - 6 - 2',isDoubles:true,editUs:8,editThem:6,editServing:'Us',editServer:2,newMode:'Doubles',newFirst:'Them',newTarget:11,newWarning:'Replaces this game and its undo history.',hasGame:true,linkDetails:'Diagnosis 1001: Phone companion not found by the band. Open Pickleball on the phone.'};
 const scenes=[
  {name:'Settings',state:{pageIndex:0}},
  {name:'Live score',state:{pageIndex:1}},
@@ -30,7 +30,7 @@ const scenes=[
  *{box-sizing:border-box} body{margin:0;background:#e9ede7;font-family:Arial,sans-serif;color:#183127} h1{font-size:24px;margin:24px 24px 8px}p{font-size:13px;margin:0 24px 12px}.sheet{display:grid;grid-template-columns:repeat(4,240px);gap:20px;margin:20px 30px}.scene{width:240px}h2{font-size:14px;text-align:center;margin:0 0 10px}.device{width:212px;height:520px;margin:auto;border-radius:106px;background:#071510;overflow:hidden;box-shadow:0 0 0 6px #13251c}
  .device div{display:flex;flex-shrink:0}.device text{display:block;flex-shrink:0;overflow-wrap:anywhere}.device list{display:block;overflow-y:auto;flex-shrink:0;scrollbar-width:none}.device list-item{display:flex;flex-shrink:0;align-items:center}
  .device swiper{display:flex;flex-shrink:0;overflow:hidden}
- .device stack{display:block;position:relative;flex-shrink:0}.device stack>div{position:absolute}
+ .device stack{display:block;position:relative;flex-shrink:0}.device stack>*{position:absolute}
  ${css}
  </style></head><body><h1>Pickleball · Band 10</h1><p>212 × 520 browser layout preview · 212 × 260 rally buttons · Settings ↔ Live score ↔ Play ↔ Music</p><div class="sheet"></div></body></html>`);
  await page.evaluate(({template,scenes,base})=>{

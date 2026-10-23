@@ -2,15 +2,15 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update both apps to v0.1.14 for reliable hold gestures, a corrected Morgan “one”, and the restored Android default voice option.**
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. **Band v0.1.15 adds a clock overlay across the app. Only the band needs updating if you already have phone v0.1.14.**
 
-**Device status:** Notify connectivity and score announcements have worked on the user’s devices. Version **0.1.14 adds explicit 650 ms touch-hold detection**, fixes the clipped start of Morgan’s “one”, and restores Android default alongside the two model voices. Automated tests cover touch timing/cancellation, score syntax, clip integrity and audio sequencing. The updated hold gesture still needs checking on a physical band.
+**Device status:** Notify connectivity and announcements have worked on the user’s devices. Version **0.1.15 displays the band’s local time at the top of every screen**. The 24-hour clock refreshes each minute and immediately on reopening; its timer stops when the app is hidden. Browser previews check the 212 × 520 layout. Physical-band rendering and the v0.1.14 hold fix still need user confirmation.
 
 The band keeps the game and undo history locally. The phone receives score snapshots and speaks using bundled model-generated audio or the phone’s default Android English speech engine. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.14
+## Upgrade to v0.1.15
 
-Install `pickleball-phone-0.1.14.apk` over the existing phone app and update the band through Notify with `pickleball-band-0.1.14.rpk`. **Both updates are needed for all fixes.** Start the announcer, then open **Announcer voice**, choose **Morgan Freeman**, **Kermit**, or **Android default**, and use **Save & test**. Your existing voice and volume settings are retained.
+Install `pickleball-band-0.1.15.rpk` through Notify. **Phone v0.1.14 already supports this update**, so no phone update is required for the clock. A matching `pickleball-phone-0.1.15.apk` is included for convenience; it only updates the displayed version. If upgrading from an older phone app, install it over the existing app to get Morgan’s corrected “one” and the Android default voice option. Your game and settings are retained.
 
 Both apps keep their package names, signing keys and saved-game format. Update in place; uninstalling first may erase settings or the saved game. Workout Lab remains a separate experiment on the v0.1.11 release.
 
@@ -27,6 +27,8 @@ Choose a voice under **Announcer voice → Save & test**. Changes apply to the n
 The phone assembles model speech into one audio buffer, or submits one TTS utterance for Android default, so volume boost and pause/ducking cover the complete call. Generated audio is normalized with peak headroom. AudioTrack and TTS use gain 1.0; normal phone/Bluetooth media-volume controls still apply.
 
 When a rally passes serve to the other team, the phone says **“Turnover” before the new score**. For example, losing serve at 4–2 on server 2 produces **“Turnover. Two. Four. One.”** In doubles this includes the opening 0–0–2 side-out; switching from server 1 to server 2 on the same team does not say turnover. Singles announces turnover whenever the serving team changes after a rally. The band marks the event in the score message, so the phone does not need to have received the preceding rally.
+
+A compact clock stays overlaid at the top of every page, including Play, Live score, Settings, Music and the forms.
 
 The app opens on **Play**, with We won covering the top half and They won covering the bottom half. The serving team and live score appear over the center seam. **Tap the middle area to speak the score; long-press it to undo once.** The existing labels stay free of gesture instructions. **Swipe right for Live score**, with the running scores, Undo, Speak and Correct. **Swipe right again for Settings**, with Phone connection and New game. **Swipe left from Play for Music**. Settings no longer has a music shortcut.
 
@@ -85,7 +87,7 @@ Xiaomi specifies a **212 × 520 pixel, 1.72-inch AMOLED** display for the Band 1
 - Center-area undo stays on Play; the separate Undo button and saved corrections stay on Live score. Cancel returns to the page that opened the form. New games open Play. Phone-connection details return to the page you came from.
 - Correction and setup controls fit without vertical overflow. Long connection details scroll independently while Reconnect and Back stay visible.
 
-![Band 10 layout preview](docs/band-ui-0.1.11.png)
+![Band 10 layout preview](docs/band-ui-0.1.15.png)
 
 This preview uses the source template and CSS in a browser with a conservative rounded display mask. It checks button halves, serve-badge alignment, two-digit scores, long status messages and the secondary screens; it is not a screenshot or emulator of Vela.
 
@@ -95,8 +97,8 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.14.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.14.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.15.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.15.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
 5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” Open **Announcer voice** to select Morgan Freeman or Kermit; neither requires a system voice installation.

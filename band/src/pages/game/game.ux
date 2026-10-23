@@ -1,4 +1,5 @@
 <template>
+  <stack class="appFrame">
   <div class="page">
     <div if="{{screen === 'loading'}}" class="panel">
       <text class="title">Pickleball</text>
@@ -114,6 +115,8 @@
       <text class="foot">Your game is kept.</text>
     </div>
   </div>
+  <text class="clock" disabled="true">{{clockTime}}</text>
+  </stack>
 </template>
 <script>
 import storage from '@system.storage';
@@ -126,9 +129,10 @@ let busy = false;
 let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUntil = 0;
 let badgeHandled = false;
 let holdTimer, touchActive = false;
+let clockTimer;
 export default {
   private: {
-    screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '', rallyServe: '', rallyDetail: '',
+    screen: 'loading', clockTime: '', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '', rallyServe: '', rallyDetail: '',
     phoneStatus: 'Phone offline', linkDetails: 'Tap Reconnect to check the phone link.', connectionReturn: 'game', connectionReturnIndex: 2, formReturnIndex: 2, notice: '', editUs: 0, editThem: 0,
     editServing: 'Us', editServer: 2, isDoubles: true,
     newMode: 'Doubles', newFirst: 'Us', newTarget: 11, hasGame: false, newWarning: '',
@@ -138,6 +142,7 @@ export default {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
     mediaSequence = 0; dragged = false; ignoreTapUntil = 0; badgeHandled = false;
     clearTimeout(holdTimer); touchActive = false;
+    this.updateClock();
     session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     this.refreshConnection(false);
     storage.get({key: 'pickleball.game.v1', default: '', success: value => {
@@ -149,18 +154,31 @@ export default {
     }, fail: () => { this.newWarning = 'Could not read saved game.'; this.screen = 'new'; this.hello(); }});
   },
   onShow() {
+    this.startClock();
     this.refreshConnection(false);
     clearInterval(heartbeat);
     heartbeat = setInterval(() => {
       if (!challenge) this.hello();
     }, 8000);
   },
-  onHide() { clearInterval(heartbeat); this.pageTouchCancel(); },
+  onHide() { clearInterval(heartbeat); clearTimeout(clockTimer); this.pageTouchCancel(); },
   onDestroy() {
     alive = false; ++linkGeneration;
     this.pageTouchCancel();
     clearInterval(heartbeat); clearTimeout(ackTimer); clearTimeout(mediaTimer);
+    clearTimeout(clockTimer);
     this.unbindConnection();
+  },
+  updateClock() {
+    const now = new Date();
+    const hours = now.getHours(), minutes = now.getMinutes();
+    this.clockTime = (hours < 10 ? '0' : '') + hours + ':' + (minutes < 10 ? '0' : '') + minutes;
+  },
+  startClock() {
+    clearTimeout(clockTimer);
+    this.updateClock();
+    // Refresh at the next minute, and immediately whenever the app becomes visible.
+    clockTimer = setTimeout(() => { if (alive) this.startClock(); }, 60000 - Date.now() % 60000);
   },
   unbindConnection() {
     if (!connection) return;
@@ -423,6 +441,8 @@ export default {
 /* Band 10: 212 × 520. Each rally control fills one half of the display.
    The stack's serve badge overlays their seam; text stays clear of rounded ends. */
 .page { width: 212px; height: 520px; background-color: #071510; color: #ffffff; flex-direction: column; align-items: center; justify-content: center; }
+.appFrame { width: 212px; height: 520px; }
+.clock { left: 70px; top: 12px; width: 72px; height: 24px; border-radius: 12px; background-color: #071510; color: #ffffff; font-size: 18px; line-height: 24px; text-align: center; lines: 1; }
 .panel { width: 180px; height: 448px; flex-direction: column; align-items: center; justify-content: center; }
 .scorePanel { width: 200px; }
 .gamePages { width: 212px; height: 520px; }
