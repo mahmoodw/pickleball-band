@@ -4,7 +4,6 @@ import android.app.*;
 import android.content.*;
 import android.media.*;
 import android.os.*;
-import android.speech.tts.*;
 import android.view.KeyEvent;
 import com.xiaomi.xms.wearable.Wearable;
 import com.xiaomi.xms.wearable.node.Node;
@@ -21,9 +20,8 @@ public class AnnouncerService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private MessageApi messages;
     private ServiceApi serviceApi;
-    private TextToSpeech tts;
-    private String voiceEngine="";
-    private boolean ttsReady, querying, attaching, registered, destroyed;
+    private ClipSpeech clipSpeech;
+    private boolean querying, attaching, registered, destroyed;
     // Node IDs are opaque: Notify can use "" for its connected band. Only null
     // means we have no route; never use String.isEmpty() to test attachment.
     private String node = null, challenge = "", activeUtterance = "";
@@ -73,13 +71,11 @@ public class AnnouncerService extends Service {
             public String route() { return mediaRoute(); }
             public void setVolume(int value) { audio.setStreamVolume(AudioManager.STREAM_MUSIC,value,0); }
             public boolean speak(String id, String text) {
-                // Apply saved choices at playback time, after any prior call has stopped.
-                if (!configureVoice()) return false;
-                Bundle params = new Bundle();
-                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME,1.0f);
-                return tts.speak(text,TextToSpeech.QUEUE_FLUSH,params,id) != TextToSpeech.ERROR;
+                AnnouncerVoice voice=selectedVoice();
+                getSharedPreferences(PREFS,0).edit().putString("voiceChoice",voice.label + " · bundled model audio").apply();
+                return clipSpeech.speak(id,voice.id,text);
             }
-            public void stop() { if (tts != null) tts.stop(); }
+            public void stop() { if (clipSpeech != null) clipSpeech.stop(); }
             public void note(String text) { getSharedPreferences(PREFS,0).edit().putString("announcementAudio",text).apply(); }
         }, (delay,action) -> main.postDelayed(action,delay), new AnnouncementAudio.Listener() {
             public void started(String id) {
@@ -92,22 +88,14 @@ public class AnnouncerService extends Service {
                 if (!id.equals(activeUtterance)) return;
                 if (activeScore != null) ack(activeScore,result);
                 speechStatus(result.equals("spoken") ? "Score spoken" : result.equals("interrupted") ?
-                    "Announcement interrupted. Tap Speak to repeat." : "Speech failed. Check the audio status and voice settings.");
+                    "Announcement interrupted. Tap Speak to repeat." : "Speech failed. Check the audio status or reinstall the voice APK.");
                 activeUtterance=""; activeScore=null;
             }
         });
-        tts = new TextToSpeech(this, result -> main.post(() -> {
-            if (destroyed) return;
-            if (result != TextToSpeech.SUCCESS) { speechStatus("Speech engine unavailable. Check Android text-to-speech settings."); return; }
-            voiceEngine=tts.getDefaultEngine();
-            tts.setAudioAttributes(speechAttributes); ttsReady = true;
-            if (configureVoice()) speechStatus("Offline English voice ready");
-        }));
-        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            public void onStart(String id) {}
-            public void onDone(String id) { main.post(() -> finishSpeech(id, true)); }
-            public void onError(String id) { main.post(() -> finishSpeech(id, false)); }
-        });
+        clipSpeech = new ClipSpeech(getAssets(),main,speechAttributes,this::finishSpeech);
+        prefs.edit().putString("voiceChoice",selectedVoice().label + " · bundled model audio")
+            .remove("announcerVoiceStyle").remove("announcerVoiceName").remove("announcerVoiceEngine").apply();
+        speechStatus("Offline model voices ready");
         main.post(poll);
     }
     @Override public int onStartCommand(Intent intent, int flags, int id) {
@@ -116,39 +104,8 @@ public class AnnouncerService extends Service {
         if (intent != null && "testVoice".equals(intent.getAction())) speak("You just got pickled! Turnover. Zero. Zero. One.", null);
         return START_NOT_STICKY;
     }
-    private boolean configureVoice() {
-        SharedPreferences prefs=getSharedPreferences(PREFS,0);
-        try {
-            List<Voice> voices=OfflineVoices.available(tts);
-            if (voices.isEmpty()) {
-                prefs.edit().putString("voiceChoice","No offline English voice installed").apply();
-                speechStatus("Install an offline English voice in Android text-to-speech settings, then restart the announcer.");
-                return false;
-            }
-            String wanted=prefs.getString(AnnouncerVoice.VOICE_KEY,"");
-            String engine=prefs.getString(AnnouncerVoice.ENGINE_KEY,"");
-            Voice selected=null;
-            if (engine.equals(voiceEngine)) for (Voice voice : voices) {
-                if (voice.getName().equals(wanted)) { selected=voice; break; }
-            }
-            boolean fallback=!wanted.isEmpty() && selected==null;
-            if (selected==null) {
-                Voice normal=tts.getDefaultVoice();
-                selected=normal!=null && voices.contains(normal) ? normal : voices.get(0);
-            }
-            AnnouncerVoice style=AnnouncerVoice.find(prefs.getString(AnnouncerVoice.STYLE_KEY,"classic"));
-            if (tts.setVoice(selected)!=TextToSpeech.SUCCESS || tts.setPitch(style.pitch)!=TextToSpeech.SUCCESS ||
-                tts.setSpeechRate(style.rate)!=TextToSpeech.SUCCESS) {
-                prefs.edit().putString("voiceChoice","Could not apply voice; choose another in Announcer voice").apply();
-                return false;
-            }
-            prefs.edit().putString("voiceChoice",style.label + " · " + OfflineVoices.label(selected) +
-                (fallback ? "\nSaved voice unavailable; using an installed English voice." : "")).apply();
-            return true;
-        } catch (RuntimeException error) {
-            prefs.edit().putString("voiceChoice","Voice unavailable. Check Android voice settings.").apply();
-            return false;
-        }
+    private AnnouncerVoice selectedVoice() {
+        return AnnouncerVoice.find(getSharedPreferences(PREFS,0).getString(AnnouncerVoice.KEY,"morgan"));
     }
     private void discover() {
         if (destroyed) return;
@@ -266,7 +223,6 @@ public class AnnouncerService extends Service {
         return action.equals("next") ? "Next track sent" : action.equals("previous") ? "Previous track sent" : "Play / pause sent";
     }
     private void speak(String text, Score score) {
-        if (!ttsReady) { cancelSpeech(); speechStatus("Voice not ready. Wait, then tap Speak again."); if (score != null) ack(score, "error"); return; }
         if (activeScore != null) ack(activeScore,"interrupted");
         activeUtterance = UUID.randomUUID().toString(); activeScore = score;
         SharedPreferences prefs=getSharedPreferences(PREFS,0);
@@ -328,7 +284,7 @@ public class AnnouncerService extends Service {
         if (announcements != null) announcements.close();
         main.removeCallbacksAndMessages(null); detach();
         if (serviceApi != null) serviceApi.unregisterServiceConnectionListener(serviceListener);
-        if (tts != null) tts.shutdown();
+        if (clipSpeech != null) clipSpeech.close();
         getSharedPreferences(PREFS,0).edit().putString("connection","Stopped. Tap Start announcer before playing.").apply();
         super.onDestroy();
     }

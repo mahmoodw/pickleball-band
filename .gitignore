@@ -6,7 +6,8 @@ sign/
 *.p12
 *.pem
 android/libs/
-android/assets/
+android/assets/*
+!android/assets/voices/
 *.log
 .temp_band/
 __pycache__/

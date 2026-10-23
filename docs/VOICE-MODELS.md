@@ -1,26 +1,54 @@
-# Downloadable announcer voice models
+# Morgan Freeman and Kermit announcers
 
-Research date: 2026-10-23. The user requested Morgan Freeman and Kermit voices.
+Version 0.1.13 includes audio generated through the two community RVC models requested by the user. The phone's only announcer choices are **Morgan Freeman** and **Kermit**. They replace the pitch presets from 0.1.12.
 
-## Candidates actually found
+The APK contains **107 clips per voice**: numbers 0–99, “You just got pickled!”, “Turnover”, “Correction”, “Game”, “to”, “We win” and “They win”. The phone joins the needed clips into one PCM buffer, preserving score order and music handling. No speech model, Android TTS engine, Internet connection or external voice app is needed during play.
 
-| Candidate | Download and format | Published terms and integration status |
+## Model provenance
+
+| Voice | RVC model source | Archive SHA-256 |
 | --- | --- | --- |
-| [RosinoSuperRosa/Kermit-The-Frog](https://huggingface.co/RosinoSuperRosa/Kermit-The-Frog) | `kermitthefrogjim.zip`, 58,085,361 bytes. Downloaded and inspected: one `.pth` model and one RVC retrieval `.index`. | Model card contains only `license: openrail`. No full license text, usage instructions, model provenance or audio sample in the archive. Not executed or bundled. |
-| [DeputyRipper/Morgan_Freeman_RVCV2](https://huggingface.co/DeputyRipper/Morgan_Freeman_RVCV2) | `Morgan Freeman.zip`, 90,920,796 bytes. Downloaded and inspected: one `.pth` model and one RVC retrieval `.index`. | Model card contains only `license: openrail`. No full license text or usage instructions in the archive. Not executed or bundled. |
-| [drewThomasson/Morgan_freeman_xtts_model](https://huggingface.co/drewThomasson/Morgan_freeman_xtts_model) | XTTS-v2 fine-tune, model archives, reference clips and generated examples. Model card and file listing inspected; weights not downloaded. | Despite a MIT metadata tag, the author explicitly notes XTTS's noncommercial restriction. The [base model license](https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt) applies noncommercial terms to models and outputs and requires passing those terms on. Not integrated. |
-| [stackeugene/MorganFreemanTTS](https://github.com/stackeugene/MorganFreemanTTS) | SpeechT5 training/inference project with a model file tracked through Git LFS. README and file listing inspected. | README claims MIT but the inspected root has no LICENSE file. Documents a Python/FastAPI workflow; Android support and output quality have not been verified. |
+| Morgan Freeman | [DeputyRipper/Morgan_Freeman_RVCV2](https://huggingface.co/DeputyRipper/Morgan_Freeman_RVCV2), `Morgan Freeman.zip` | `7a8fb2803d9be0ba515f8a5b795cd8bbf6652ede10f260267d73129cc908218f` |
+| Kermit | [RosinoSuperRosa/Kermit-The-Frog](https://huggingface.co/RosinoSuperRosa/Kermit-The-Frog), `kermitthefrogjim.zip` | `b4190411150db40707ddfca9f40979d504e4b1649facb066df1f35b2ec6b6e4b` |
 
-These are free public downloads, but that alone does not establish that they are fully open or that their outputs can be redistributed without conditions. In particular, a generic OpenRAIL metadata tag does not identify the complete terms to include with a public voice pack. No claim of official endorsement or verified likeness is made.
+Each model page declares `license: openrail`; the downloaded archives contain the model checkpoint and retrieval index but no separate full license document. These are community model outputs, not original recordings or officially endorsed voices. The source metadata is reported as published, without claiming ownership of the depicted voice or a broader grant of rights. The model weights and retrieval indexes are **not** included in the app or source archive.
 
-## Practical integration path
+Every voice pack contains `manifest.json` with the exact model/index hashes, inference commit, generation parameters and a hash/frame count for every rendered clip.
 
-The RVC files convert existing speech audio into another timbre. They cannot be selected directly in Android's TextToSpeech voice chooser. They require an inference pipeline, a content encoder and pitch processing, plus a source voice. XTTS directly accepts text but also needs its own model runtime; neither candidate is an installed Android TTS voice.
+## Generation
 
-Pickleball has a small vocabulary: the numbers zero through ninety-nine, “Turnover,” “Correction,” “Game,” “to,” “We win,” “They win,” and “You just got pickled!” A practical offline approach is to generate and review those clips on a computer, package the clips with their applicable terms, and assemble them on the phone. That avoids model inference and network latency on court. This requires clip playback support and validated voice assets; **v0.1.12 does not include that pipeline or named-voice clips**.
+1. Source speech is synthesized with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0 model) through [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) (MIT). Source voices are `am_michael` for Morgan Freeman and `am_puck` for Kermit. Each word or phrase follows “Listen carefully.” during generation, providing sentence context for short numbers.
+2. **Both sources pass through their respective RVC models and retrieval indexes.** [Applio](https://github.com/IAHispano/Applio) commit `c817f1f83f689ef72e0dfeb1c17ae990b9248506` (MIT) runs on CPU, using ContentVec, RMVPE, index rate 0.75 and consonant protection 0.33. Kermit's “Game” uses index rate 0.25 and protection 0.0 to preserve its ending consonant; this override is recorded in the clip manifest. RVC pitch is zero for both voices; no runtime pitch effect is used.
+3. Torchaudio's `WAV2VEC2_ASR_BASE_960H` aligns the known source transcript to the audio. The converted audio is cropped at the target phrase boundary, removing “Listen carefully.” and retaining the complete ending. The result is resampled to 24 kHz mono, trimmed with edge padding, normalized with peak headroom and faded at the edges to prevent clicks. Assets use signed 16-bit little-endian PCM.
+4. `scripts/verify_voice_packs.py` checks complete vocabulary, hashes, sample counts, non-silent/non-clipped audio and the longest possible call against the playback timeout. APK builds fail if the voice assets are incomplete.
 
-For comparison, [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) is a general TTS model with Apache-2.0 metadata and [documented voices](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md). Its listed voices do not include Morgan Freeman or Kermit, so it is not a substitute for the requested identities.
+The generator uses a small adapter for kokoro-onnx 0.4.9's `input_ids` model export so its speed input matches the model's float32 schema. It preserves fractional generation speeds rather than passing the library's integer speed array.
 
-## Implemented in v0.1.12
+### Reproduce
 
-The phone can select installed offline English voices and Classic, Deep narrator or Playful frog pitch/speed styles. The band sends optional Boolean `pickled: true` on a long-press rally message, after successfully saving the rally. The phone prefixes that rally's speech with the catchphrase. Missing flags preserve compatibility with earlier band versions; older phone versions ignore the new flag and announce the score normally. Sync, repeat, corrections and undo do not replay it. No model weights or research downloads are included in source archives, APKs or release bundles.
+The generated clips are included in the repository and source archive; ordinary APK builds do not need inference dependencies. For regeneration, use an isolated Python 3.12 environment with CPU PyTorch 2.6.0, torchaudio 2.6.0, kokoro-onnx 0.4.9, librosa 0.11.0, numpy 2.2.6, scipy 1.15.3, soundfile 0.13.1, faiss-cpu 1.10.0, transformers 4.48.3, torchcrepe 0.0.23, einops 0.8.1, requests and stftpitchshift. See `scripts/voice-generation-requirements.txt` for the recorded environment.
+
+Prepare a work directory containing:
+
+- `Applio/` checked out at the commit above.
+- `morgan/model.pth`, `morgan/model.index`, `kermit/model.pth`, `kermit/model.index`, extracted from the hash-verified archives above.
+- `kokoro.onnx` and `voices.bin` from [kokoro-onnx model-files-v1.1](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1).
+- Applio's ContentVec `config.json`/`pytorch_model.bin` under `Applio/rvc/models/embedders/contentvec/` and `rmvpe.pt` under `Applio/rvc/models/predictors/`, from the [Applio resources](https://huggingface.co/IAHispano/Applio/tree/main/Resources).
+- `aligner/wav2vec2_fairseq_base_ls960_asr_ls960.pth` from [Torchaudio's model host](https://download.pytorch.org/torchaudio/models/wav2vec2_fairseq_base_ls960_asr_ls960.pth). Torchaudio can also download this file on the first generation run.
+
+```bash
+python scripts/generate_voice_packs.py --work-dir /path/to/work --output android/assets/voices
+python scripts/verify_voice_packs.py
+```
+
+Use a fresh work directory if changing model files or generation settings; intermediate audio and alignment in `work/render-context-v2/` are cached for resuming interrupted builds. Add `--sample` and a different output directory to generate complete demo sentences instead of the clip vocabulary. `--only n00,n04,pickled` with a separate output directory renders a small, incomplete pack for inspection; incomplete packs cannot be packaged in the APK.
+
+## Playback and validation
+
+`VoiceClips` converts the scorer's announcement text into known clip IDs. Missing or malformed clips fail the call; playback never silently substitutes a system voice. File reads run on a worker, and `ClipPlayback` invalidates old loads and completion callbacks whenever a call is replaced, stopped or the service closes. AudioTrack plays the complete call under the existing announcement focus/volume controller. Calls use a 160 ms pause between clip fragments.
+
+JVM checks cover all 20,000 score/serving-side combinations, number vocabulary, game-result assembly, missing/malformed audio and cancellation races. Assembled score calls are also checked with a separate speech recognizer (faster-whisper using `Systran/faster-whisper-base.en`). This helps find pronunciation and trimming errors; it does not measure voice similarity or guarantee every word is clear. Physical-device playback and perceived voice quality still need user testing.
+
+Packaging generates `morgan-voice-preview.wav` and `kermit-voice-preview.wav` directly from the APK's clips with the same 160 ms gaps: “You just got pickled! Turnover. Four. Two. One.” Both previews are included in the release and its checksums.
+
+Band v0.1.12 is compatible with this phone update. A matching v0.1.13 RPK changes only its version metadata. Workout Lab remains a separate experimental release.

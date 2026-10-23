@@ -3,9 +3,11 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import zipfile
 import xml.etree.ElementTree as ET
 from fetch_notify_sdk import FILENAME, verified_classes
+from verify_voice_packs import verify
 
 ROOT = Path(__file__).resolve().parents[1]
 JDK = Path(os.environ['PICKLEBALL_JDK'])
@@ -14,6 +16,10 @@ TOOLS = Path(os.environ['PICKLEBALL_ANDROID_TOOLS'])
 OUT = ROOT / 'build/android'
 DIST = ROOT / 'dist'
 SIGN = ROOT / 'sign'
+verify(ROOT / 'android/assets/voices')
+for folder in [OUT / 'classes', OUT / 'dex']:
+    if folder.exists():
+        shutil.rmtree(folder)
 for p in [OUT / 'classes', OUT / 'dex', DIST, SIGN]:
     p.mkdir(parents=True, exist_ok=True)
 env = dict(os.environ, JAVA_HOME=str(JDK), PATH=str(JDK / 'bin') + os.pathsep + os.environ['PATH'])
@@ -58,7 +64,8 @@ with zipfile.ZipFile(classjar, 'w') as z:
         z.write(p, p.relative_to(OUT / 'classes'))
 run(TOOLS / 'd8', '--min-api', '26', '--lib', SDK / 'android.jar', '--output', OUT / 'dex', classjar, jar)
 unsigned = OUT / 'unsigned.apk'
-run(TOOLS / 'aapt2', 'link', '-o', unsigned, '-I', SDK / 'android.jar', '--manifest', ROOT / 'android/AndroidManifest.xml')
+run(TOOLS / 'aapt2', 'link', '-o', unsigned, '-I', SDK / 'android.jar', '--manifest', ROOT / 'android/AndroidManifest.xml',
+    '-A', ROOT / 'android/assets')
 with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED) as z:
     for p in (OUT / 'dex').glob('*.dex'):
         z.write(p, p.name)

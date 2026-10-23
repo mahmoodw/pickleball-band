@@ -2,25 +2,27 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update both apps to v0.1.12 for a voice chooser and a “You just got pickled!” call when you hold either rally button.**
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update the phone to v0.1.13 for Morgan Freeman and Kermit model voices. Use band v0.1.12 or newer for the long-press catchphrase.**
 
-**Device status:** the user reports the Notify connection and announcements working. Version **0.1.12 adds offline voice selection, voice styles and a rally-button hold gesture**. Automated checks cover score syntax, gesture isolation and audio sequencing; the new voice chooser and rally holds still need checking on a physical phone and band.
+**Device status:** the user reports the Notify connection and announcements working. Version **0.1.13 replaces pitch presets with bundled audio generated through the requested Morgan Freeman and Kermit RVC models**. Automated checks cover vocabulary, clip integrity, score syntax, playback cancellation and audio sequencing. Physical-phone playback and Bluetooth behavior still need checking.
 
-The band keeps the game and undo history locally. The phone receives score snapshots and speaks using an offline English Android voice. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
+The band keeps the game and undo history locally. The phone receives score snapshots and speaks using bundled model-generated audio. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.12
+## Upgrade to v0.1.13
 
-Install `pickleball-phone-0.1.12.apk` over the existing phone app and update the band through Notify with `pickleball-band-0.1.12.rpk`. Open **Announcer voice** on the phone to choose a style and an installed offline English voice. **Save & test** previews “You just got pickled! Turnover. Zero. Zero. One.” Both apps keep their package names, signing keys and saved-game format. Update in place; uninstalling first may erase settings or the saved game. Workout Lab remains an independent experiment available as additional assets on the v0.1.11 release.
+Install `pickleball-phone-0.1.13.apk` over the existing phone app. **If your band already has v0.1.12, only the APK needs updating.** A matching `pickleball-band-0.1.13.rpk` is also provided. Open **Announcer voice**, choose **Morgan Freeman** or **Kermit**, and use **Save & test** with the announcer running. The preview says “You just got pickled! Turnover. Zero. Zero. One.” Morgan Freeman is the default after upgrading from the preset build.
+
+Both apps keep their package names, signing keys and saved-game format. Update in place; uninstalling first may erase settings or the saved game. Workout Lab remains a separate experiment on the v0.1.11 release.
 
 **Hold We won or They won** to record one rally and prefix its announcement with **“You just got pickled!”** The band saves the rally first, then sends one announcement containing the catchphrase, any turnover and the resulting score. Releasing the hold cannot add a second rally. The catchphrase is never replayed by Speak, Undo or reconnect; taps retain their normal scoring behavior. Traditional side-out rules still apply when the receiving team wins the rally.
 
 ## Announcer voices
 
-Choose **Classic**, **Deep narrator** or **Playful frog** in the phone's **Announcer voice** dialog. These apply pitch and speed settings to an installed English voice. **They are not Morgan Freeman or Kermit recordings, clones or downloadable voice models.** Their sound depends on the phone's speech engine and selected base voice. See [downloadable voice-model research](docs/VOICE-MODELS.md) for the community models found and the remaining integration work.
+The two choices use the community [Morgan Freeman](https://huggingface.co/DeputyRipper/Morgan_Freeman_RVCV2) and [Kermit](https://huggingface.co/RosinoSuperRosa/Kermit-The-Frog) RVC models. Their generated clips are bundled in the APK, including numbers 0–99, the catchphrase, turnover, correction and game-result phrases. There are no pitch presets, system-voice selections or runtime TTS fallback. A missing or damaged clip reports an error instead of switching voices.
 
-The base-voice list contains installed English voices that do not require a network connection. Automatic uses an eligible default voice, then a deterministic English fallback. A saved voice that has been removed or belongs to a different engine falls back with a message in the phone's voice status. **Android voice settings** opens the system settings to download voices or change engines; restart the announcer after changing the system engine. Save applies to the next call without restarting for ordinary voice/style changes. Save & test requires the announcer to be running.
+Choose a voice under **Announcer voice → Save & test**. Changes apply to the next announcement without restarting. Everything works offline after installation; no account, model download or extra TTS app is needed. See [voice-model provenance and generation instructions](docs/VOICE-MODELS.md).
 
-The catchphrase and score use a single TTS utterance, so volume boost and pause/ducking cover both together. No cloud service, account or API key is used.
+The phone assembles the catchphrase and score into one audio buffer, so volume boost and pause/ducking cover the complete call. Generated audio is normalized with peak headroom. AudioTrack uses gain 1.0; normal phone/Bluetooth media-volume controls still apply.
 
 When a rally passes serve to the other team, the phone says **“Turnover” before the new score**. For example, losing serve at 4–2 on server 2 produces **“Turnover. Two. Four. One.”** In doubles this includes the opening 0–0–2 side-out; switching from server 1 to server 2 on the same team does not say turnover. Singles announces turnover whenever the serving team changes after a rally. The band marks the event in the score message, so the phone does not need to have received the preceding rally.
 
@@ -50,13 +52,13 @@ With **Pause music on**, Pickleball:
 3. If boost is enabled, raises media volume to the chosen level only if it is higher than the current level, then waits the gap again before speaking.
 4. Restores the original media volume after speech, waits the gap, then releases audio focus so the player can resume.
 
-With **Pause music off**, the app requests ducking, applies any volume boost and starts TTS immediately. It does not add a lead-in, a speaker-settling gap or a post-speech delay. Completion still restores the original volume before releasing focus. Android TTS, the music player and Bluetooth retain their own latency; speaker volume changes may arrive after the speech starts. Ducking depth still depends on Android and the player.
+With **Pause music off**, the app requests ducking, applies any volume boost and starts clip playback without a deliberate wait. It does not add a lead-in, a speaker-settling gap or a post-speech delay. Completion still restores the original volume before releasing focus. Audio loading/playback, the music player and Bluetooth retain their own latency; speaker volume changes may arrive after the speech starts. Ducking depth still depends on Android and the player.
 
 The pause-mode gap is adjustable from **250 to 1500 ms in 25 ms steps**. It applies at each settling stage, so it is not the total announcement delay. Increase it if the Bluetooth speaker changes level slowly. If music stays active or resumes before speech starts in pause mode, the boost is skipped. In duck mode, active music is expected and does not block the boost. The saved gap is preserved while its controls are disabled.
 
-Speech explicitly uses TTS volume **1.0**, Android's default maximum relative to the selected media level. The announcement percentage refers to the media slider, not a percentage increase in perceived loudness. Zero media volume stays muted; fixed-volume outputs are not changed. Bluetooth absolute volume normally links the phone and speaker controls. A separate hardware gain knob is not adjusted by the app.
+Speech uses AudioTrack gain **1.0**, the maximum gain relative to the selected media level. The announcement percentage refers to the media slider, not a percentage increase in perceived loudness. Zero media volume stays muted; fixed-volume outputs are not changed. Bluetooth absolute volume normally links the phone and speaker controls. A separate hardware gain knob is not adjusted by the app.
 
-Completion, cancellation, TTS failures, a missing completion callback and normal service shutdown restore the temporary level before releasing focus. Rapid new scores replace pending calls and do not reuse an elevated level as the music baseline. A manual volume change is preserved; a detected output change cancels speech and avoids writing the old speaker's volume into the new output. Force-stopping or killing the process can prevent cleanup, and an output disconnected while boosted may retain its last level. Music buttons interrupt an active call and operate after its local music level is restored.
+Completion, cancellation, playback failures, a missing completion callback and normal service shutdown restore the temporary level before releasing focus. Rapid new scores replace pending calls and do not reuse an elevated level as the music baseline. A manual volume change is preserved; a detected output change cancels speech and avoids writing the old speaker's volume into the new output. Force-stopping or killing the process can prevent cleanup, and an output disconnected while boosted may retain its last level. Music buttons interrupt an active call and operate after its local music level is restored.
 
 On upgrade, existing boosted calls keep requesting a pause, while existing unboosted calls keep requesting ducking. The new Pause music switch then lets you select either behavior independently.
 
@@ -91,11 +93,11 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.12.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.12.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.13.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.13.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
-5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Android voice settings** to install an offline English voice and then stop/start the announcer.
+5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” Open **Announcer voice** to select Morgan Freeman or Kermit; neither requires a system voice installation.
 6. Open **Pickleball** on the band. Start a new game, choosing singles/doubles, who serves first and 11/15/21 points. From Play, swipe right for **Live score**. If offline, tap the phone status to open **Phone link → Reconnect**, or swipe right again for **Settings → Phone connection**. Return with **Back**, wait for **Phone connected** on Live score, then tap **Speak**. The phone should read the displayed call; the band should eventually say **Score spoken**.
 
 The announcer has an ongoing notification while active. Leave it running during play, then use **Stop announcer** or the notification's **Stop** action. Speech uses the phone's selected media output, including connected headphones or speakers. The Announcement volume settings can temporarily raise its level with music paused or ducking requested.
@@ -123,7 +125,7 @@ Each update is saved on the band before transmission. Updates made offline stay 
 6. Start a track on the phone, swipe left on the band, and test play/pause, next/previous and volume. Repeat with the phone locked. Swipe back across the rally buttons and confirm that no point was added.
 7. With music playing at your usual volume, enable Raise volume for announcements, turn Pause music on, set the gap to 350 ms and use Save & test. Confirm the original music level returns afterward. Turn Pause music off and test a modest boost again: check whether the music ducks enough and whether it swells before/after the call. With Pause off, confirm the gap control is disabled and the app adds no settling wait. Return to pause mode to use a gap if needed.
 
-If it fails, tap **Copy connection details** on the phone and include that text plus the band's **Phone link** status and diagnosis in a report. It includes the app/Android/Notify versions, whether Notify's Interconnect service is visible, connection/voice errors, the last message-send result and whether the phone has received a band message. It excludes band identifiers and keys. “Notify listener ready” means Notify accepted listener registration; “Band app connected” means a score packet was received and validated. A send accepted by Notify alone does not confirm delivery to the band. These details distinguish a missing Notify service, authorization failure, missing band communication and unavailable TTS. **Score spoken** means Android's speech engine reported completion; it cannot establish that the phone's volume was audible on court. Android battery management may need adjustment if the announcer stops while the phone is locked.
+If it fails, tap **Copy connection details** on the phone and include that text plus the band's **Phone link** status and diagnosis in a report. It includes the app/Android/Notify versions, whether Notify's Interconnect service is visible, connection/voice errors, the last message-send result and whether the phone has received a band message. It excludes band identifiers and keys. “Notify listener ready” means Notify accepted listener registration; “Band app connected” means a score packet was received and validated. A send accepted by Notify alone does not confirm delivery to the band. These details distinguish a missing Notify service, authorization failure, missing band communication and unavailable audio playback. **Score spoken** means Android's audio track reached the end of the call; it cannot establish that the phone's volume was audible on court. Android battery management may need adjustment if the announcer stops while the phone is locked.
 
 If the app says Notify is installed but its Interconnect service is unavailable, update Notify and open it, then retry. A disconnected phone does not prevent local band scoring.
 
@@ -178,7 +180,7 @@ The music protocol has 24 checks for session validation, duplicate and out-of-or
 "$PICKLEBALL_JDK/bin/java" -cp build/java-tests:/path/to/json-20240303.jar com.wmahmood.pickleball.MediaRemoteTest
 ```
 
-The announcement audio controller has 90 checks for pause and immediate duck modes, independent boost selection, exact 350 ms timing, boost/speech/restore ordering, Bluetooth settling delays, players that ignore pause requests, replacements, interruption, timeouts, TTS failures, manual volume changes, output changes and service shutdown:
+The announcement audio controller has 90 checks for pause and immediate duck modes, independent boost selection, exact 350 ms timing, boost/speech/restore ordering, Bluetooth settling delays, players that ignore pause requests, replacements, interruption, timeouts, playback failures, manual volume changes, output changes and service shutdown:
 
 ```bash
 "$PICKLEBALL_JDK/bin/javac" -d build/audio-tests android/src/com/wmahmood/pickleball/AnnouncementAudio.java tests/AnnouncementAudioTest.java
@@ -186,6 +188,15 @@ The announcement audio controller has 90 checks for pause and immediate duck mod
 ```
 
 These tests use an explicit clock and simulated audio state. They do not establish a physical speaker's latency or a particular player's audio-focus behavior.
+
+The model-voice checks cover score-to-clip mapping (including all 20,000 score/serving-side pairs), malformed or missing clips and playback cancellation races. After fetching the SDK:
+
+```bash
+"$PICKLEBALL_JDK/bin/javac" -cp "/path/to/json-20240303.jar:$PICKLEBALL_ANDROID_PLATFORM/android.jar:android/libs/xms.jar" -d build/voice-tests android/src/com/wmahmood/pickleball/*.java tests/*.java
+"$PICKLEBALL_JDK/bin/java" -cp build/voice-tests:/path/to/json-20240303.jar com.wmahmood.pickleball.AnnouncerVoiceTest
+"$PICKLEBALL_JDK/bin/java" -cp build/voice-tests:/path/to/json-20240303.jar com.wmahmood.pickleball.ClipPlaybackTest
+python3 scripts/verify_voice_packs.py
+```
 
 After fetching the SDK, run `python3 -m unittest discover -s tests -p 'test_*.py'` to verify the provider library and Android package visibility agree. No real-device connection is emulated by these tests.
 
@@ -197,7 +208,7 @@ To regenerate the browser layout preview, run `node scripts/preview_band.cjs` wi
 - [Xiaomi Interconnect documentation and SDK/demo download](https://iot.mi.com/vela/quickapp/en/features/network/interconnect.html)
 - [Notify's custom Interconnect SDK, Android demo and integration instructions](https://www.mibandnotify.com/xiaomi-mi-band/notify-xms-app-instructions.php)
 - [Android audio focus](https://developer.android.com/media/optimize/audio-focus)
-- [Android TTS volume](https://developer.android.com/reference/android/speech/tts/TextToSpeech.Engine#KEY_PARAM_VOLUME)
+- [Android AudioTrack](https://developer.android.com/reference/android/media/AudioTrack)
 - [Android Bluetooth absolute volume](https://source.android.com/docs/core/connect/bluetooth/services#absolute-volume-control)
 - [Vela stack overlay documentation](https://iot.mi.com/vela/quickapp/en/components/container/stack.html)
 - [Vela native swiper documentation](https://iot.mi.com/vela/quickapp/en/components/container/swiper.html)

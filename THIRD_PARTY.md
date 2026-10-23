@@ -7,3 +7,9 @@
 - **Playwright / Chromium:** optional development tools for the browser layout preview. Install separately; neither is bundled with the APK, RPK or source archive. The preview approximates Vela layout and is not a wearable emulator.
 
 The supplied app icons and application code were created for this project. No Mi Fitness, Notify or Xiaomi signing identity is reused.
+
+## Generated announcer audio
+
+The APK and source archive include synthetic score clips rendered through the community [Morgan Freeman RVC model](https://huggingface.co/DeputyRipper/Morgan_Freeman_RVCV2) and [Kermit RVC model](https://huggingface.co/RosinoSuperRosa/Kermit-The-Frog). Both model cards declare `license: openrail`; no model weights are bundled. These are community model outputs with no claim of official endorsement. See `docs/VOICE-MODELS.md` and each pack's `manifest.json` for source attribution, hashes and generation parameters.
+
+Offline build tools used to generate the clips include **Applio** (MIT), **kokoro-onnx** (MIT), **Kokoro-82M** (Apache-2.0 model), ContentVec, RMVPE and Torchaudio/Wav2Vec2 for source alignment. Their model runtimes are not bundled in Android. The fixed app vocabulary is original to this project; the two voice models perform the final voice conversion. The generated audio's provenance does not assert ownership of any speaker or character identity.

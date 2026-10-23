@@ -1,20 +1,18 @@
 package com.wmahmood.pickleball;
 
-/** Offline styles adjust an installed TTS voice; they do not clone a speaker. */
+/** The only selectable voices are the bundled recordings rendered through RVC. */
 final class AnnouncerVoice {
-    static final String STYLE_KEY="announcerVoiceStyle", VOICE_KEY="announcerVoiceName", ENGINE_KEY="announcerVoiceEngine";
-    static final AnnouncerVoice[] STYLES={
-        new AnnouncerVoice("classic","Classic",1.0f,0.85f),
-        new AnnouncerVoice("narrator","Deep narrator",0.72f,0.78f),
-        new AnnouncerVoice("frog","Playful frog",1.35f,0.95f)
+    static final String KEY="recordedAnnouncerVoice";
+    static final AnnouncerVoice[] VOICES={
+        new AnnouncerVoice("morgan","Morgan Freeman"),
+        new AnnouncerVoice("kermit","Kermit")
     };
     final String id, label;
-    final float pitch, rate;
-    private AnnouncerVoice(String id,String label,float pitch,float rate) {
-        this.id=id; this.label=label; this.pitch=pitch; this.rate=rate;
+    private AnnouncerVoice(String id,String label) {
+        this.id=id; this.label=label;
     }
     static AnnouncerVoice find(String id) {
-        for (AnnouncerVoice style : STYLES) if (style.id.equals(id)) return style;
-        return STYLES[0];
+        for (AnnouncerVoice voice : VOICES) if (voice.id.equals(id)) return voice;
+        return VOICES[0];
     }
 }
