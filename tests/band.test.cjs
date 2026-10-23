@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const rules = require('../band/src/common/scoring');
 function harness(saved = '', failWrite = false) {
   let now = 1000;
-  const sent = [], requests = [], writes = [], diagnoses = [], timers = new Map(), intervals = new Map(); let timerId = 0;
+  const sent = [], requests = [], writes = [], diagnoses = [], timers = new Map(), deadlines = new Map(), intervals = new Map(); let timerId = 0;
   const makeConnection = () => ({
     send: args => { sent.push(args.data); requests.push(args); },
     getReadyState: args => args.success({status:1}), diagnosis: args => diagnoses.push(args)
@@ -16,7 +16,7 @@ function harness(saved = '', failWrite = false) {
     interconnect: {instance: () => { instanceCalls++; return activeConnection; }}, vibrator: {vibrate: () => {}},
     require: () => rules, setInterval: f => { intervals.set(++timerId,f); return timerId; }, clearInterval: id => intervals.delete(id),
     Date: class extends Date { static now() { return now; } },
-    setTimeout: f => { timers.set(++timerId,f); return timerId; }, clearTimeout: id => timers.delete(id),
+    setTimeout: (f,ms) => { timers.set(++timerId,f); deadlines.set(timerId,now+ms); return timerId; }, clearTimeout: id => { timers.delete(id); deadlines.delete(id); },
     result: null
   };
   let script = fs.readFileSync(require.resolve('../band/src/pages/game/game.ux'),'utf8').split('<script>')[1].split('</script>')[0];
@@ -27,9 +27,18 @@ function harness(saved = '', failWrite = false) {
   page.$element = () => ({swipeTo: ({index}) => page.pageChanged({index})});
   page.onInit();
   const hello = (mediaVersion = 1) => activeConnection.onmessage({data:JSON.stringify({type:'hello',challenge:'test-challenge',mediaVersion})});
-  const settle = () => { now += 400; page.pageTouchStart({touches:[{clientX:106,clientY:260}]}); };
+  const settle = () => { page.pageTouchEnd(); now += 400; page.pageTouchStart({touches:[{clientX:106,clientY:260}]}); };
   const visit = index => { page.pageChanged({index}); settle(); };
-  return {page,conn,sent,requests,writes,hello,timers,intervals,diagnoses,makeConnection,
+  const tick = ms => {
+    const until=now+ms;
+    while (true) {
+      const next=[...deadlines].filter(([id,time])=>timers.has(id) && time<=until).sort((a,b)=>a[1]-b[1])[0];
+      if (!next) break;
+      const [id,time]=next, fn=timers.get(id); now=time; timers.delete(id); deadlines.delete(id); fn();
+    }
+    now=until;
+  };
+  return {tick,page,conn,sent,requests,writes,hello,timers,intervals,diagnoses,makeConnection,
     replaceConnection: next => { activeConnection = next; }, instanceCalls: () => instanceCalls, settle, visit, advance: ms => { now += ms; }};
 }
 test('band persists before broadcasting, correction is one atomic update', () => {
@@ -344,4 +353,49 @@ test('late music replies and send failures cannot replace a newer command result
   ack(next,'Volume 5 / 15'); assert.equal(h.page.musicStatus,'Volume 5 / 15');
   h.page.musicQuieter(); assert.equal(h.sent.at(-1).action,'volumeDown');
   h.page.onDestroy(); assert.equal(h.timers.size,0);
+});
+
+test('raw touch holds trigger catchphrase without native longpress, once per gesture', () => {
+  for (const [start,tap,team] of [['weTouchStart','weWon',0],['theyTouchStart','theyWon',1]]) {
+    const h=harness(JSON.stringify(rules.create('doubles',team))); h.hello();
+    const event={touches:[{clientX:106,clientY:team===0 ? 100 : 400}]};
+    h.page[start](event); h.page.pageTouchStart(event); // Real child-to-swiper bubbling.
+    h.tick(649); assert.equal(h.writes.length,0);
+    h.tick(1); assert.equal(h.writes.length,1); assert.equal(h.sent.at(-1).pickled,true);
+    assert.equal(h.sent.at(-1).state.scores[team],1);
+    h.tick(1500); h.page.pageTouchEnd(); h.page.pageTouchEnd(); h.page[tap]();
+    assert.equal(h.writes.length,1);
+    h.page[start](event); h.tick(100); h.page.pageTouchEnd(); h.page[tap]();
+    assert.equal(h.writes.length,2); assert.equal(h.sent.at(-1).pickled,undefined);
+  }
+});
+test('touch hold cancellation prevents delayed scoring or a release click', () => {
+  const event={touches:[{clientX:100,clientY:100}]};
+  for (const cancel of [h=>h.page.pageTouchCancel(), h=>h.page.onHide(), h=>h.page.onDestroy(),
+    h=>h.page.pageChanged({index:1}), h=>h.page.pageTouchMove({touches:[{clientX:130,clientY:100}]})]) {
+    const h=harness(JSON.stringify(rules.create())); h.hello();
+    h.page.weTouchStart(event); h.tick(300); cancel(h); h.tick(1000);
+    h.page.pageTouchEnd(); h.page.weWon(); assert.equal(h.writes.length,0);
+  }
+});
+test('short touch stays a normal rally and the center hold still undoes once', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  const event={touches:[{clientX:106,clientY:100}]};
+  h.page.weTouchStart(event); h.tick(300); h.page.pageTouchEnd(); h.page.weWon(); h.tick(500);
+  assert.equal(h.writes.length,1); assert.equal(h.sent.at(-1).pickled,undefined);
+  h.page.badgeTouchStart({touches:[{clientX:106,clientY:260}]}); h.tick(650);
+  assert.equal(h.writes.length,1); // Center keeps its existing native Undo gesture.
+  h.page.badgeUndo();
+  h.page.pageTouchEnd(); h.page.badgeSpeak();
+  assert.equal(h.writes.length,2); assert.equal(h.sent.at(-1).action,'undo');
+});
+test('rally and badge templates bind the raw touch lifecycle', () => {
+  const template=fs.readFileSync(require.resolve('../band/src/pages/game/game.ux'),'utf8').split('<script>')[0];
+  for (const handler of ['weTouchStart','theyTouchStart','badgeTouchStart']) {
+    const tag=template.match(new RegExp('<div[^>]*ontouchstart="'+handler+'"[^>]*>'));
+    assert.ok(tag,handler);
+    if (handler==='badgeTouchStart') assert.ok(tag[0].includes('onlongpress="badgeUndo"'));
+    else assert.ok(!tag[0].includes('onlongpress='));
+    for (const event of ['move','end','cancel']) assert.ok(tag[0].includes('ontouch'+event+'='));
+  }
 });

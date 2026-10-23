@@ -1,8 +1,8 @@
 # Morgan Freeman and Kermit announcers
 
-Version 0.1.13 includes audio generated through the two community RVC models requested by the user. The phone's only announcer choices are **Morgan Freeman** and **Kermit**. They replace the pitch presets from 0.1.12.
+Version 0.1.14 offers **Morgan Freeman**, **Kermit**, and **Android default**. The two model voices use the downloaded community RVC models. Android default restores the original offline English TTS announcer. No pitch presets are included.
 
-The APK contains **107 clips per voice**: numbers 0–99, “You just got pickled!”, “Turnover”, “Correction”, “Game”, “to”, “We win” and “They win”. The phone joins the needed clips into one PCM buffer, preserving score order and music handling. No speech model, Android TTS engine, Internet connection or external voice app is needed during play.
+The APK contains **107 clips per voice**: numbers 0–99, “You just got pickled!”, “Turnover”, “Correction”, “Game”, “to”, “We win” and “They win”. The phone joins the needed clips into one PCM buffer, preserving score order and music handling. The model choices need no runtime speech model, Android TTS engine, Internet connection or external voice app. Android default uses the phone’s default TTS engine and an installed offline English voice at speech rate 0.85.
 
 ## Model provenance
 
@@ -19,7 +19,7 @@ Every voice pack contains `manifest.json` with the exact model/index hashes, inf
 
 1. Source speech is synthesized with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0 model) through [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) (MIT). Source voices are `am_michael` for Morgan Freeman and `am_puck` for Kermit. Each word or phrase follows “Listen carefully.” during generation, providing sentence context for short numbers.
 2. **Both sources pass through their respective RVC models and retrieval indexes.** [Applio](https://github.com/IAHispano/Applio) commit `c817f1f83f689ef72e0dfeb1c17ae990b9248506` (MIT) runs on CPU, using ContentVec, RMVPE, index rate 0.75 and consonant protection 0.33. Kermit's “Game” uses index rate 0.25 and protection 0.0 to preserve its ending consonant; this override is recorded in the clip manifest. RVC pitch is zero for both voices; no runtime pitch effect is used.
-3. Torchaudio's `WAV2VEC2_ASR_BASE_960H` aligns the known source transcript to the audio. The converted audio is cropped at the target phrase boundary, removing “Listen carefully.” and retaining the complete ending. The result is resampled to 24 kHz mono, trimmed with edge padding, normalized with peak headroom and faded at the edges to prevent clicks. Assets use signed 16-bit little-endian PCM.
+3. Torchaudio's `WAV2VEC2_ASR_BASE_960H` aligns the known source transcript to the audio. The converted audio is cropped at the target phrase boundary, removing “Listen carefully.” and retaining the complete ending. Morgan’s “one” uses the preceding acoustic sentence pause because character alignment otherwise cuts off its soft /w/ onset; its manifest records the crop boundary. The result is resampled to 24 kHz mono, trimmed with edge padding, normalized with peak headroom and faded at the edges to prevent clicks. Assets use signed 16-bit little-endian PCM.
 4. `scripts/verify_voice_packs.py` checks complete vocabulary, hashes, sample counts, non-silent/non-clipped audio and the longest possible call against the playback timeout. APK builds fail if the voice assets are incomplete.
 
 The generator uses a small adapter for kokoro-onnx 0.4.9's `input_ids` model export so its speed input matches the model's float32 schema. It preserves fractional generation speeds rather than passing the library's integer speed array.
@@ -45,10 +45,10 @@ Use a fresh work directory if changing model files or generation settings; inter
 
 ## Playback and validation
 
-`VoiceClips` converts the scorer's announcement text into known clip IDs. Missing or malformed clips fail the call; playback never silently substitutes a system voice. File reads run on a worker, and `ClipPlayback` invalidates old loads and completion callbacks whenever a call is replaced, stopped or the service closes. AudioTrack plays the complete call under the existing announcement focus/volume controller. Calls use a 160 ms pause between clip fragments.
+`VoiceClips` converts the scorer's announcement text into known clip IDs. Missing or malformed clips fail the call; model playback never silently substitutes a system voice. Android default is an explicit third choice with readiness/error reporting and cancellation of stale TTS callbacks. File reads run on a worker, and `ClipPlayback` invalidates old loads and completion callbacks whenever a call is replaced, stopped or the service closes. AudioTrack plays the complete call under the existing announcement focus/volume controller. Calls use a 160 ms pause between clip fragments.
 
 JVM checks cover all 20,000 score/serving-side combinations, number vocabulary, game-result assembly, missing/malformed audio and cancellation races. Assembled score calls are also checked with a separate speech recognizer (faster-whisper using `Systran/faster-whisper-base.en`). This helps find pronunciation and trimming errors; it does not measure voice similarity or guarantee every word is clear. Physical-device playback and perceived voice quality still need user testing.
 
 Packaging generates `morgan-voice-preview.wav` and `kermit-voice-preview.wav` directly from the APK's clips with the same 160 ms gaps: “You just got pickled! Turnover. Four. Two. One.” Both previews are included in the release and its checksums.
 
-Band v0.1.12 is compatible with this phone update. A matching v0.1.13 RPK changes only its version metadata. Workout Lab remains a separate experimental release.
+Update the band to v0.1.14 for the 650 ms touch-hold fix. Older band versions remain protocol-compatible but retain their previous gesture behavior. Workout Lab remains a separate experimental release.

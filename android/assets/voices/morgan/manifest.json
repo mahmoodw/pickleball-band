@@ -26,8 +26,10 @@
     },
     "n01": {
       "text": "one",
-      "frames": 7750,
-      "sha256": "afe611a762c02db02ae99de54bea072c87e67fd5b50d6da4c91a9a38bf92098f"
+      "frames": 13244,
+      "sha256": "351bad77045288431ad4b2c086c89257e148e73a099afa6b6f4283289ea1d795",
+      "cropStart": 1.45,
+      "cropMethod": "source sentence pause; retain /w/ onset"
     },
     "n02": {
       "text": "two",

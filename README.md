@@ -2,27 +2,29 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update the phone to v0.1.13 for Morgan Freeman and Kermit model voices. Use band v0.1.12 or newer for the long-press catchphrase.**
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update both apps to v0.1.14 for reliable hold gestures, a corrected Morgan “one”, and the restored Android default voice option.**
 
-**Device status:** the user reports the Notify connection and announcements working. Version **0.1.13 replaces pitch presets with bundled audio generated through the requested Morgan Freeman and Kermit RVC models**. Automated checks cover vocabulary, clip integrity, score syntax, playback cancellation and audio sequencing. Physical-phone playback and Bluetooth behavior still need checking.
+**Device status:** Notify connectivity and score announcements have worked on the user’s devices. Version **0.1.14 adds explicit 650 ms touch-hold detection**, fixes the clipped start of Morgan’s “one”, and restores Android default alongside the two model voices. Automated tests cover touch timing/cancellation, score syntax, clip integrity and audio sequencing. The updated hold gesture still needs checking on a physical band.
 
-The band keeps the game and undo history locally. The phone receives score snapshots and speaks using bundled model-generated audio. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
+The band keeps the game and undo history locally. The phone receives score snapshots and speaks using bundled model-generated audio or the phone’s default Android English speech engine. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.13
+## Upgrade to v0.1.14
 
-Install `pickleball-phone-0.1.13.apk` over the existing phone app. **If your band already has v0.1.12, only the APK needs updating.** A matching `pickleball-band-0.1.13.rpk` is also provided. Open **Announcer voice**, choose **Morgan Freeman** or **Kermit**, and use **Save & test** with the announcer running. The preview says “You just got pickled! Turnover. Zero. Zero. One.” Morgan Freeman is the default after upgrading from the preset build.
+Install `pickleball-phone-0.1.14.apk` over the existing phone app and update the band through Notify with `pickleball-band-0.1.14.rpk`. **Both updates are needed for all fixes.** Start the announcer, then open **Announcer voice**, choose **Morgan Freeman**, **Kermit**, or **Android default**, and use **Save & test**. Your existing voice and volume settings are retained.
 
 Both apps keep their package names, signing keys and saved-game format. Update in place; uninstalling first may erase settings or the saved game. Workout Lab remains a separate experiment on the v0.1.11 release.
 
-**Hold We won or They won** to record one rally and prefix its announcement with **“You just got pickled!”** The band saves the rally first, then sends one announcement containing the catchphrase, any turnover and the resulting score. Releasing the hold cannot add a second rally. The catchphrase is never replayed by Speak, Undo or reconnect; taps retain their normal scoring behavior. Traditional side-out rules still apply when the receiving team wins the rally.
+**Hold We won or They won for about 650 ms** to record one rally and prefix its announcement with **“You just got pickled!”** The band saves the rally first, then sends one announcement containing the catchphrase, any turnover and the resulting score. Releasing the hold cannot add a second rally. The band detects elapsed touch time directly; dragging, cancelling, hiding the app or changing pages cancels a pending hold. The catchphrase is never replayed by Speak, Undo or reconnect; taps retain their normal scoring behavior. Traditional side-out rules still apply when the receiving team wins the rally.
 
 ## Announcer voices
 
-The two choices use the community [Morgan Freeman](https://huggingface.co/DeputyRipper/Morgan_Freeman_RVCV2) and [Kermit](https://huggingface.co/RosinoSuperRosa/Kermit-The-Frog) RVC models. Their generated clips are bundled in the APK, including numbers 0–99, the catchphrase, turnover, correction and game-result phrases. There are no pitch presets, system-voice selections or runtime TTS fallback. A missing or damaged clip reports an error instead of switching voices.
+The two model choices use the community [Morgan Freeman](https://huggingface.co/DeputyRipper/Morgan_Freeman_RVCV2) and [Kermit](https://huggingface.co/RosinoSuperRosa/Kermit-The-Frog) RVC models. Their generated clips are bundled in the APK, including numbers 0–99, the catchphrase, turnover, correction and game-result phrases. No pitch presets are included. Model voices never silently fall back to Android TTS. A missing or damaged clip reports an error instead of switching voices.
 
-Choose a voice under **Announcer voice → Save & test**. Changes apply to the next announcement without restarting. Everything works offline after installation; no account, model download or extra TTS app is needed. See [voice-model provenance and generation instructions](docs/VOICE-MODELS.md).
+**Android default** restores the original Android announcer at its original 0.85 speech rate. It uses the default TTS engine’s installed offline English voice, preferring its default voice when eligible. If needed, install an offline English voice in Android’s text-to-speech settings and restart the announcer.
 
-The phone assembles the catchphrase and score into one audio buffer, so volume boost and pause/ducking cover the complete call. Generated audio is normalized with peak headroom. AudioTrack uses gain 1.0; normal phone/Bluetooth media-volume controls still apply.
+Choose a voice under **Announcer voice → Save & test**. Changes apply to the next announcement without restarting. The bundled model voices need no account or additional voice installation. Android default also works offline once an English voice is installed. See [voice-model provenance and generation instructions](docs/VOICE-MODELS.md).
+
+The phone assembles model speech into one audio buffer, or submits one TTS utterance for Android default, so volume boost and pause/ducking cover the complete call. Generated audio is normalized with peak headroom. AudioTrack and TTS use gain 1.0; normal phone/Bluetooth media-volume controls still apply.
 
 When a rally passes serve to the other team, the phone says **“Turnover” before the new score**. For example, losing serve at 4–2 on server 2 produces **“Turnover. Two. Four. One.”** In doubles this includes the opening 0–0–2 side-out; switching from server 1 to server 2 on the same team does not say turnover. Singles announces turnover whenever the serving team changes after a rally. The band marks the event in the score message, so the phone does not need to have received the preceding rally.
 
@@ -93,8 +95,8 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.13.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.13.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.14.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.14.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
 5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” Open **Announcer voice** to select Morgan Freeman or Kermit; neither requires a system voice installation.

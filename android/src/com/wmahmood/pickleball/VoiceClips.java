@@ -34,7 +34,7 @@ final class VoiceClips {
     }
     interface Reader { InputStream open(String path) throws IOException; }
     static byte[] assemble(String voice,List<String> clips,Reader source) throws IOException {
-        if (!AnnouncerVoice.find(voice).id.equals(voice)) throw new IOException("Unknown voice");
+        if (!AnnouncerVoice.find(voice).id.equals(voice) || !AnnouncerVoice.find(voice).recorded()) throw new IOException("Unknown recorded voice");
         ByteArrayOutputStream result=new ByteArrayOutputStream();
         for (String key : clips) {
             if (!WORDS.containsValue(key)) throw new IOException("Unknown clip");

@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
         button(body,"Request band access (if needed)",this::grantAccess);
         button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to choose a louder voice, music pause or ducking, and a speaker settling gap. Audio follows your phone's media output.\n\nVersion 0.1.13. Use Announcer voice to choose Morgan Freeman or Kermit. Both use bundled audio generated with community voice models and work offline. Hold either rally button to add You just got pickled! before the new score. The band opens on two large rally buttons. Tap the middle serve/score area to speak; hold it to undo. Swipe right for live score, Undo, Speak and Correct; swipe right again for settings. Swipe left from the rally buttons for music. Start playback in your phone music app first.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to choose a louder voice, music pause or ducking, and a speaker settling gap. Audio follows your phone's media output.\n\nVersion 0.1.14. Use Announcer voice to choose Morgan Freeman, Kermit or Android default. The model voices use bundled audio; Android default uses your phone’s offline English speech engine. Hold either rally button for about two-thirds of a second to add You just got pickled! before the new score. The band opens on two large rally buttons. Tap the middle serve/score area to speak; hold it to undo. Swipe right for live score, Undo, Speak and Correct; swipe right again for settings. Swipe left from the rally buttons for music. Start playback in your phone music app first.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;
@@ -219,7 +219,7 @@ public class MainActivity extends Activity {
     }
     private void copyDiagnostics() {
         SharedPreferences p=getSharedPreferences(AnnouncerService.PREFS,0);
-        StringBuilder text=new StringBuilder("Pickleball 0.1.13 / Android API ").append(Build.VERSION.SDK_INT);
+        StringBuilder text=new StringBuilder("Pickleball 0.1.14 / Android API ").append(Build.VERSION.SDK_INT);
         for (String name : NotifyBridge.PACKAGES) {
             try { text.append("\n").append(name).append(" ").append(getPackageManager().getPackageInfo(name,0).versionName); }
             catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}

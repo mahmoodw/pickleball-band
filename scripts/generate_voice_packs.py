@@ -123,6 +123,17 @@ def main():
                     crop_start = max(previous_end,first_start-.05)
                     span_file.write_text(json.dumps({'start':crop_start,'text':transcript}))
                 crop_start = json.loads(span_file.read_text())['start']
+                if voice=='morgan' and key=='n01':
+                    # CTC places the O token after the soft /w/ onset in "one".
+                    # Include the complete word from the preceding sentence pause.
+                    original, source_rate = sf.read(source_file, dtype='float32')
+                    hop = source_rate // 100
+                    rms = np.array([np.sqrt(np.mean(original[i:i+hop]**2)) for i in range(0,len(original),hop)])
+                    edges = np.diff(np.r_[False,rms<.003,False].astype(int))
+                    pauses = [(a*.01,b*.01) for a,b in zip(np.flatnonzero(edges==1),np.flatnonzero(edges==-1))
+                              if b-a>=14 and .6<a*.01 and b*.01<crop_start]
+                    if not pauses: raise RuntimeError('Missing sentence pause before Morgan one')
+                    crop_start = pauses[-1][1]-.06
             if not converted.exists():
                 converter.convert_audio(str(source_file), str(converted), str(model), str(index),
                                         pitch=0, f0_method='rmvpe', index_rate=index_rate, protect=protect,
@@ -151,6 +162,8 @@ def main():
             manifest['clips'][key] = {'text': text, 'frames': len(audio), 'sha256': sha(target)}
             if (index_rate,protect)!=(.75,.33):
                 manifest['clips'][key].update(rvcIndexRate=index_rate,rvcProtect=protect)
+            if voice=='morgan' and key=='n01':
+                manifest['clips'][key].update(cropStart=crop_start,cropMethod='source sentence pause; retain /w/ onset')
             if args.sample:
                 sf.write(destination / 'sample.wav', audio, 24000, subtype='PCM_16')
             print(f'{voice}/{key}: {len(audio)/24000:.2f}s', flush=True)

@@ -1,8 +1,8 @@
 {
   "package": "com.wmahmood.pickleball",
   "name": "Pickleball",
-  "versionName": "0.1.13",
-  "versionCode": 14,
+  "versionName": "0.1.14",
+  "versionCode": 15,
   "minPlatformVersion": 1200,
   "icon": "/common/icon.png",
   "deviceTypeList": ["watch"],

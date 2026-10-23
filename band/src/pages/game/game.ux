@@ -4,7 +4,7 @@
       <text class="title">Pickleball</text>
       <text class="hint">Loading game...</text>
     </div>
-    <swiper if="{{screen === 'game'}}" id="gamePages" class="gamePages" index="{{pageIndex}}" loop="false" indicator="false" onchange="pageChanged" ontouchstart="pageTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd">
+    <swiper if="{{screen === 'game'}}" id="gamePages" class="gamePages" index="{{pageIndex}}" loop="false" indicator="false" onchange="pageChanged" ontouchstart="pageTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd" ontouchcancel="pageTouchCancel">
     <div class="slide">
     <div class="panel">
       <text class="title">Settings</text>
@@ -35,14 +35,14 @@
     </div>
     <stack class="rallyPage">
       <div class="rallyHalves">
-        <div class="rallyButton ours" onclick="weWon" onlongpress="wePickled">
+        <div class="rallyButton ours" onclick="weWon" ontouchstart="weTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd" ontouchcancel="pageTouchCancel">
           <text class="rallyTitle oursText">We won</text><text class="rallyCaption oursText">the rally</text>
         </div>
-        <div class="rallyButton theirs" onclick="theyWon" onlongpress="theyPickled">
+        <div class="rallyButton theirs" onclick="theyWon" ontouchstart="theyTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd" ontouchcancel="pageTouchCancel">
           <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
         </div>
       </div>
-      <div class="serveBadge" onclick="badgeSpeak" onlongpress="badgeUndo">
+      <div class="serveBadge" onclick="badgeSpeak" onlongpress="badgeUndo" ontouchstart="badgeTouchStart" ontouchmove="pageTouchMove" ontouchend="pageTouchEnd" ontouchcancel="pageTouchCancel">
         <text class="badgeTeam">{{rallyServe}}</text>
         <text class="badgeDetail">{{rallyDetail}}</text>
       </div>
@@ -125,6 +125,7 @@ let linkGeneration = 0, alive = false;
 let busy = false;
 let mediaSequence = 0, mediaTimer, touchX, touchY, dragged = false, ignoreTapUntil = 0;
 let badgeHandled = false;
+let holdTimer, touchActive = false;
 export default {
   private: {
     screen: 'loading', us: 0, them: 0, scoreCall: '0 - 0 - 2', serveLabel: '', rallyServe: '', rallyDetail: '',
@@ -136,6 +137,7 @@ export default {
   onInit() {
     game = null; busy = false; sequence = 0; challenge = ''; alive = true;
     mediaSequence = 0; dragged = false; ignoreTapUntil = 0; badgeHandled = false;
+    clearTimeout(holdTimer); touchActive = false;
     session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     this.refreshConnection(false);
     storage.get({key: 'pickleball.game.v1', default: '', success: value => {
@@ -153,9 +155,10 @@ export default {
       if (!challenge) this.hello();
     }, 8000);
   },
-  onHide() { clearInterval(heartbeat); badgeHandled = true; },
+  onHide() { clearInterval(heartbeat); this.pageTouchCancel(); },
   onDestroy() {
     alive = false; ++linkGeneration;
+    this.pageTouchCancel();
     clearInterval(heartbeat); clearTimeout(ackTimer); clearTimeout(mediaTimer);
     this.unbindConnection();
   },
@@ -244,28 +247,49 @@ export default {
     clearTimeout(mediaTimer); this.musicBusy = false; this.mediaAvailable = false; this.musicStatus = message;
   },
   pageTouchStart(event) {
+    // A control's touchstart also bubbles through the swiper. Initialize once.
+    if (event.touches && event.touches.length > 1) { this.pageTouchCancel(); return; }
+    if (touchActive) return;
+    touchActive = true;
     badgeHandled = false;
     const touch = event.touches && event.touches[0];
     touchX = touch ? touch.clientX : undefined; touchY = touch ? touch.clientY : undefined; dragged = false;
   },
   pageTouchMove(event) {
     const touch = event.touches && event.touches[0];
-    if (touch && touchX !== undefined && (Math.abs(touch.clientX - touchX) > 12 || Math.abs(touch.clientY - touchY) > 12)) dragged = true;
+    if ((event.touches && event.touches.length > 1) ||
+        (touch && touchX !== undefined && (Math.abs(touch.clientX - touchX) > 12 || Math.abs(touch.clientY - touchY) > 12))) {
+      dragged = true; clearTimeout(holdTimer);
+    }
   },
-  pageTouchEnd() { if (dragged) ignoreTapUntil = Date.now() + 350; },
+  pageTouchEnd() { clearTimeout(holdTimer); touchActive = false; if (dragged) ignoreTapUntil = Date.now() + 350; },
+  pageTouchCancel() { clearTimeout(holdTimer); touchActive = false; badgeHandled = true; },
+  weTouchStart(event) { this.startHold(event, 0); },
+  theyTouchStart(event) { this.startHold(event, 1); },
+  badgeTouchStart(event) { this.pageTouchStart(event); clearTimeout(holdTimer); },
+  startHold(event, target) {
+    this.pageTouchStart(event);
+    clearTimeout(holdTimer);
+    if (!touchActive || busy || badgeHandled || !this.canRallyTap()) return;
+    holdTimer = setTimeout(() => {
+      if (!alive || !touchActive || badgeHandled || !this.canRallyTap()) return;
+      this.pickledRally(target);
+    }, 650);
+  },
   canTap() { return !dragged && Date.now() >= ignoreTapUntil; },
   canScoreTap() { return this.screen === 'game' && this.pageIndex === 1 && this.canTap(); },
   canRallyTap() { return this.screen === 'game' && this.pageIndex === 2 && this.canTap(); },
   pageChanged(event) {
     if (event.index !== 0 && event.index !== 1 && event.index !== 2 && event.index !== 3) return;
     this.pageIndex = event.index; ignoreTapUntil = Date.now() + 350;
-    badgeHandled = true;
+    this.pageTouchCancel();
   },
   showMusic() { this.goToPage(3); },
   showScore() { this.goToPage(1); },
   showRally() { this.goToPage(2); },
   goToPage(index) {
     if (!this.canTap() || busy) return;
+    this.pageTouchCancel();
     this.pageIndex = index;
     if (this.screen === 'game') this.$element('gamePages').swipeTo({index});
     else this.screen = 'game';
@@ -351,11 +375,12 @@ export default {
   theyPickled() { this.pickledRally(1); },
   pickledRally(team) {
     if (!game || busy || badgeHandled || !this.canRallyTap()) return;
+    clearTimeout(holdTimer);
     badgeHandled = true;
     this.save(rules.rally(game, team), 'rally', true);
   },
-  // Native longpress may be followed by click on release. Consume this entire
-  // touch until the next touchstart, including repeated longpress callbacks.
+  // A timed hold may be followed by click on release. Consume this entire
+  // touch until the next touchstart, including repeated hold callbacks.
   badgeSpeak() {
     if (!game || busy || badgeHandled || !this.canRallyTap()) return;
     badgeHandled = true; this.send('repeat');

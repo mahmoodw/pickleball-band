@@ -21,6 +21,7 @@ public class AnnouncerService extends Service {
     private MessageApi messages;
     private ServiceApi serviceApi;
     private ClipSpeech clipSpeech;
+    private AndroidSpeech androidSpeech;
     private boolean querying, attaching, registered, destroyed;
     // Node IDs are opaque: Notify can use "" for its connected band. Only null
     // means we have no route; never use String.isEmpty() to test attachment.
@@ -72,10 +73,10 @@ public class AnnouncerService extends Service {
             public void setVolume(int value) { audio.setStreamVolume(AudioManager.STREAM_MUSIC,value,0); }
             public boolean speak(String id, String text) {
                 AnnouncerVoice voice=selectedVoice();
-                getSharedPreferences(PREFS,0).edit().putString("voiceChoice",voice.label + " · bundled model audio").apply();
-                return clipSpeech.speak(id,voice.id,text);
+                getSharedPreferences(PREFS,0).edit().putString("voiceChoice",voice.description()).apply();
+                return voice.recorded() ? clipSpeech.speak(id,voice.id,text) : androidSpeech.speak(id,text);
             }
-            public void stop() { if (clipSpeech != null) clipSpeech.stop(); }
+            public void stop() { if (clipSpeech != null) clipSpeech.stop(); if (androidSpeech != null) androidSpeech.stop(); }
             public void note(String text) { getSharedPreferences(PREFS,0).edit().putString("announcementAudio",text).apply(); }
         }, (delay,action) -> main.postDelayed(action,delay), new AnnouncementAudio.Listener() {
             public void started(String id) {
@@ -88,14 +89,17 @@ public class AnnouncerService extends Service {
                 if (!id.equals(activeUtterance)) return;
                 if (activeScore != null) ack(activeScore,result);
                 speechStatus(result.equals("spoken") ? "Score spoken" : result.equals("interrupted") ?
-                    "Announcement interrupted. Tap Speak to repeat." : "Speech failed. Check the audio status or reinstall the voice APK.");
+                    "Announcement interrupted. Tap Speak to repeat." : "Speech failed. Check the audio status and selected voice.");
                 activeUtterance=""; activeScore=null;
             }
         });
         clipSpeech = new ClipSpeech(getAssets(),main,speechAttributes,this::finishSpeech);
-        prefs.edit().putString("voiceChoice",selectedVoice().label + " · bundled model audio")
+        androidSpeech = new AndroidSpeech(this,main,speechAttributes,this::finishSpeech,() -> {
+            if (!destroyed && !selectedVoice().recorded() && activeUtterance.isEmpty()) speechStatus(androidSpeech.status());
+        });
+        prefs.edit().putString("voiceChoice",selectedVoice().description())
             .remove("announcerVoiceStyle").remove("announcerVoiceName").remove("announcerVoiceEngine").apply();
-        speechStatus("Offline model voices ready");
+        speechStatus(selectedVoice().recorded() ? "Offline model voices ready" : androidSpeech.status());
         main.post(poll);
     }
     @Override public int onStartCommand(Intent intent, int flags, int id) {
@@ -223,6 +227,9 @@ public class AnnouncerService extends Service {
         return action.equals("next") ? "Next track sent" : action.equals("previous") ? "Previous track sent" : "Play / pause sent";
     }
     private void speak(String text, Score score) {
+        if (!selectedVoice().recorded() && !androidSpeech.ready()) {
+            cancelSpeech(); speechStatus(androidSpeech.status()); if (score!=null) ack(score,"error"); return;
+        }
         if (activeScore != null) ack(activeScore,"interrupted");
         activeUtterance = UUID.randomUUID().toString(); activeScore = score;
         SharedPreferences prefs=getSharedPreferences(PREFS,0);
@@ -285,6 +292,7 @@ public class AnnouncerService extends Service {
         main.removeCallbacksAndMessages(null); detach();
         if (serviceApi != null) serviceApi.unregisterServiceConnectionListener(serviceListener);
         if (clipSpeech != null) clipSpeech.close();
+        if (androidSpeech != null) androidSpeech.close();
         getSharedPreferences(PREFS,0).edit().putString("connection","Stopped. Tap Start announcer before playing.").apply();
         super.onDestroy();
     }

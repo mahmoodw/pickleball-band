@@ -12,9 +12,12 @@ public final class AnnouncerVoiceTest {
         check(failed);
     }
     public static void main(String[] args) throws Exception {
-        check(AnnouncerVoice.VOICES.length==2);
+        check(AnnouncerVoice.VOICES.length==3);
         check(AnnouncerVoice.find("morgan").label.equals("Morgan Freeman"));
         check(AnnouncerVoice.find("kermit").label.equals("Kermit"));
+        check(AnnouncerVoice.find("android").label.equals("Android default"));
+        check(!AnnouncerVoice.find("android").recorded());
+        check(AnnouncerVoice.find("morgan").recorded() && AnnouncerVoice.find("kermit").recorded());
         check(AnnouncerVoice.find(null).id.equals("morgan"));
         check(AnnouncerVoice.find("frog").id.equals("morgan"));
         check(VoiceClips.plan("You just got pickled! Turnover. Four. Two. One.")
@@ -44,6 +47,9 @@ public final class AnnouncerVoiceTest {
             catch (IOException expected) { failed=true; }
             check(failed);
         }
+        boolean rejectedAndroid=false;
+        try { VoiceClips.assemble("android",VoiceClips.plan("one"),path -> { throw new AssertionError("TTS must not load model clips"); }); }
+        catch (IOException expected) { rejectedAndroid=true; } check(rejectedAndroid);
         boolean failed=false;
         try { VoiceClips.assemble("morgan",VoiceClips.plan("one"),path -> { throw new IOException("Missing clip"); }); }
         catch (IOException expected) { failed=true; } check(failed);
