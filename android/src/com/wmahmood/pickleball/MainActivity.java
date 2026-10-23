@@ -4,14 +4,19 @@ import android.app.*;
 import android.content.*;
 import android.graphics.Color;
 import android.os.*;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.view.*;
 import android.widget.*;
+import java.util.ArrayList;
+import java.util.List;
 import com.xiaomi.xms.wearable.Wearable;
 import com.xiaomi.xms.wearable.auth.Permission;
 import com.xiaomi.xms.wearable.node.Node;
 
 public class MainActivity extends Activity {
-    private TextView score, details, connection, speech, music, announcementAudio, feedback;
+    private TextView score, details, connection, speech, voiceChoice, music, announcementAudio, feedback;
+    private AlertDialog voiceDialog;
     private final BandSelection selection = new BandSelection();
     private long accessRequest;
     private boolean accessPending;
@@ -34,6 +39,7 @@ public class MainActivity extends Activity {
         details = label(body,"Open Pickleball on your band to sync the score.",17,Color.WHITE);
         connection = label(body,"",15,Color.rgb(164,183,172));
         speech = label(body,"",15,Color.rgb(164,183,172));
+        voiceChoice = label(body,"",14,Color.rgb(164,183,172));
         music = label(body,"",15,Color.rgb(164,183,172));
         announcementAudio = label(body,"",15,Color.rgb(164,183,172));
         button(body,"Start announcer",() -> {
@@ -45,12 +51,13 @@ public class MainActivity extends Activity {
             startService(new Intent(this,AnnouncerService.class).setAction("test"));
         });
         button(body,"Announcement volume",this::announcementSettings);
+        button(body,"Announcer voice",this::voiceSettings);
         button(body,"Select band",this::selectBand);
         button(body,"Open Notify",() -> {
             Intent launch = NotifyBridge.launchIntent(this);
             if (launch != null) startActivity(launch); else feedback.setText(NotifyBridge.missingMessage(this));
         });
-        button(body,"Voice settings",() -> {
+        button(body,"Android voice settings",() -> {
             try { startActivity(new Intent("com.android.settings.TTS_SETTINGS")); }
             catch (Exception e) { feedback.setText("Open Android Settings and search for Text-to-speech."); }
         });
@@ -58,7 +65,7 @@ public class MainActivity extends Activity {
         button(body,"Request band access (if needed)",this::grantAccess);
         button(body,"Copy connection details",this::copyDiagnostics);
         feedback = label(body,"",14,Color.rgb(230,198,132));
-        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to choose a louder voice, music pause or ducking, and a speaker settling gap. Audio follows your phone's media output.\n\nVersion 0.1.11. The band opens on two large rally buttons. Tap the middle serve/score area to speak; hold it to undo. Swipe right for live score, Undo, Speak and Correct; swipe right again for settings. Swipe left from the rally buttons for music. Start playback in your phone music app first.",14,Color.rgb(164,183,172));
+        label(body,"Connect your band in Notify for Xiaomi and keep Notify running. Select your band, then start the announcer. Only use Request band access if a permission error is reported. Mi Fitness and Tasker are not required. Use Announcement volume to choose a louder voice, music pause or ducking, and a speaker settling gap. Audio follows your phone's media output.\n\nVersion 0.1.12. Use Announcer voice to choose an offline voice and style. Hold either rally button to add You just got pickled! before the new score. The band opens on two large rally buttons. Tap the middle serve/score area to speak; hold it to undo. Swipe right for live score, Undo, Speak and Correct; swipe right again for settings. Swipe left from the rally buttons for music. Start playback in your phone music app first.",14,Color.rgb(164,183,172));
     }
     private TextView label(LinearLayout parent,String text,int sp,int color) {
         TextView v=new TextView(this); v.setText(text); v.setTextSize(sp); v.setTextColor(color); v.setPadding(0,dp(10),0,dp(14)); parent.addView(v); return v;
@@ -73,6 +80,8 @@ public class MainActivity extends Activity {
         score.setText(p.getString("score","—")); details.setText(p.getString("details","Open Pickleball on your band to sync the score."));
         connection.setText(AnnouncerService.running ? p.getString("connection","Connecting...") : "Announcer stopped");
         speech.setText(p.getString("speech","Use Test phone voice before your first game."));
+        AnnouncerVoice style=AnnouncerVoice.find(p.getString(AnnouncerVoice.STYLE_KEY,"classic"));
+        voiceChoice.setText("Announcer style: " + style.label + (AnnouncerService.running ? "\n" + p.getString("voiceChoice","Loading voice...") : ""));
         music.setText("Music: " + (AnnouncerService.running ? p.getString("media","Start music on your phone, then swipe left on the band's Play page.") : "Start the announcer to enable band controls."));
         announcementAudio.setText("Announcement volume: " + (p.getBoolean("announcementBoost",false) ?
             p.getInt("announcementVolume",75) + "% when the normal level is lower" : "Same as music") +
@@ -80,6 +89,74 @@ public class MainActivity extends Activity {
             (p.getBoolean("announcementPauseMusic",p.getBoolean("announcementBoost",false)) ?
                 "\nSpeaker settling gap: " + p.getInt("announcementGap",500) + " ms" : "\nNo added announcement delay") +
             (AnnouncerService.running ? "\n" + p.getString("announcementAudio","Ready to test") : ""));
+    }
+    private void voiceSettings() {
+        SharedPreferences prefs=getSharedPreferences(AnnouncerService.PREFS,0);
+        LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(20),dp(12),dp(20),dp(12));
+        form.setBackgroundColor(Color.rgb(7,21,16));
+        label(form,"Voice style",17,Color.WHITE);
+        Spinner styles=new Spinner(this);
+        String[] names=new String[AnnouncerVoice.STYLES.length];
+        int selectedStyle=0;
+        for (int i=0;i<names.length;i++) {
+            names[i]=AnnouncerVoice.STYLES[i].label;
+            if (AnnouncerVoice.STYLES[i].id.equals(prefs.getString(AnnouncerVoice.STYLE_KEY,"classic"))) selectedStyle=i;
+        }
+        styles.setAdapter(voiceAdapter(names)); styles.setSelection(selectedStyle);
+        form.addView(styles,new LinearLayout.LayoutParams(-1,dp(56)));
+        label(form,"Classic uses the normal voice. Deep narrator lowers the pitch and slows the delivery. Playful frog raises the pitch for a lighter character sound. These styles use your installed voice; they are not recordings or replicas of Morgan Freeman or Kermit.",14,Color.rgb(164,183,172));
+        label(form,"Offline English voice",17,Color.WHITE);
+        Spinner voices=new Spinner(this); voices.setAdapter(voiceAdapter(new String[]{"Loading installed voices..."})); voices.setEnabled(false);
+        form.addView(voices,new LinearLayout.LayoutParams(-1,dp(64)));
+        TextView hint=label(form,"Choose a base voice, then Save & test to hear the catchphrase and a sample score. All speech stays on your phone.",14,Color.rgb(164,183,172));
+        label(form,"Hold either We won or They won on the band to record one rally and announce “You just got pickled!” followed by the new score. A normal tap gives the usual score call.",14,Color.rgb(164,183,172));
+        final TextToSpeech[] engine={null};
+        final boolean[] closed={false}, loaded={false};
+        final List<Voice> available=new ArrayList<>();
+        Runnable save=() -> {
+            SharedPreferences.Editor edit=prefs.edit().putString(AnnouncerVoice.STYLE_KEY,AnnouncerVoice.STYLES[styles.getSelectedItemPosition()].id);
+            if (loaded[0]) {
+                int index=voices.getSelectedItemPosition();
+                edit.putString(AnnouncerVoice.VOICE_KEY,index>0 ? available.get(index-1).getName() : "")
+                    .putString(AnnouncerVoice.ENGINE_KEY,engine[0].getDefaultEngine());
+            }
+            edit.apply(); render();
+        };
+        ScrollView scroll=new ScrollView(this); scroll.addView(form);
+        voiceDialog=new AlertDialog.Builder(this).setTitle("Announcer voice").setView(scroll)
+            .setPositiveButton("Save",(dialog,which) -> { save.run(); feedback.setText("Voice saved. It applies to the next announcement."); })
+            .setNeutralButton("Save & test",(dialog,which) -> {
+                save.run();
+                if (AnnouncerService.running) startService(new Intent(this,AnnouncerService.class).setAction("testVoice"));
+                else feedback.setText("Voice saved. Start the announcer, then use Save & test to preview it.");
+            }).setNegativeButton("Cancel",null).create();
+        voiceDialog.setOnDismissListener(dialog -> { closed[0]=true; if (engine[0]!=null) engine[0].shutdown(); });
+        voiceDialog.show();
+        engine[0]=new TextToSpeech(this,result -> handler.post(() -> {
+            if (closed[0] || isDestroyed()) return;
+            try {
+                if (result!=TextToSpeech.SUCCESS) { hint.setText("Could not load voices. You can save a style; check Android voice settings for installed voices."); return; }
+                available.addAll(OfflineVoices.available(engine[0]));
+                String[] labels=new String[available.size()+1]; labels[0]="Automatic offline English";
+                String wanted=prefs.getString(AnnouncerVoice.VOICE_KEY,"");
+                boolean sameEngine=prefs.getString(AnnouncerVoice.ENGINE_KEY,"").equals(engine[0].getDefaultEngine());
+                int chosen=0;
+                for (int i=0;i<available.size();i++) {
+                    Voice voice=available.get(i); labels[i+1]=OfflineVoices.label(voice);
+                    if (sameEngine && voice.getName().equals(wanted)) chosen=i+1;
+                }
+                voices.setAdapter(voiceAdapter(labels)); voices.setSelection(chosen); voices.setEnabled(!available.isEmpty()); loaded[0]=true;
+                if (available.isEmpty()) hint.setText("No offline English voice installed. Install one in Android voice settings, then restart the announcer and reopen this chooser.");
+                else if (!wanted.isEmpty() && chosen==0) hint.setText("The saved voice is unavailable in this engine. Choose an installed voice or save Automatic offline English.");
+            } catch (RuntimeException error) { hint.setText("Voice list unavailable. Check Android voice settings, then reopen this chooser."); }
+        }));
+        handler.postDelayed(() -> {
+            if (!closed[0] && !loaded[0]) hint.setText("Still waiting for the speech engine. You can save a style, or check Android voice settings and reopen this chooser.");
+        },8000);
+    }
+    private ArrayAdapter<String> voiceAdapter(String[] values) {
+        ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,values);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); return adapter;
     }
     private void announcementSettings() {
         SharedPreferences prefs=getSharedPreferences(AnnouncerService.PREFS,0);
@@ -196,7 +273,7 @@ public class MainActivity extends Activity {
     }
     private void copyDiagnostics() {
         SharedPreferences p=getSharedPreferences(AnnouncerService.PREFS,0);
-        StringBuilder text=new StringBuilder("Pickleball 0.1.11 / Android API ").append(Build.VERSION.SDK_INT);
+        StringBuilder text=new StringBuilder("Pickleball 0.1.12 / Android API ").append(Build.VERSION.SDK_INT);
         for (String name : NotifyBridge.PACKAGES) {
             try { text.append("\n").append(name).append(" ").append(getPackageManager().getPackageInfo(name,0).versionName); }
             catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
@@ -205,6 +282,8 @@ public class MainActivity extends Activity {
         text.append("\nAnnouncer running: ").append(AnnouncerService.running);
         text.append("\nConnection: ").append(p.getString("connection","Not started"));
         text.append("\nVoice: ").append(p.getString("speech","Not started"));
+        text.append("\nAnnouncer style: ").append(AnnouncerVoice.find(p.getString(AnnouncerVoice.STYLE_KEY,"classic")).label);
+        text.append("\nVoice choice: ").append(p.getString("voiceChoice","Not started"));
         text.append("\nMusic: ").append(p.getString("media","No controls sent"));
         text.append("\nAnnouncement boost: ").append(p.getBoolean("announcementBoost",false));
         text.append("\nPause music: ").append(p.getBoolean("announcementPauseMusic",p.getBoolean("announcementBoost",false)));
@@ -223,5 +302,5 @@ public class MainActivity extends Activity {
     }
     @Override public void onResume() { super.onResume(); handler.post(refresh); }
     @Override public void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
-    @Override public void onDestroy() { selection.cancel(); accessRequest++; handler.removeCallbacksAndMessages(null); super.onDestroy(); }
+    @Override public void onDestroy() { if (voiceDialog!=null) voiceDialog.dismiss(); selection.cancel(); accessRequest++; handler.removeCallbacksAndMessages(null); super.onDestroy(); }
 }

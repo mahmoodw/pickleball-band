@@ -277,6 +277,46 @@ test('badge undo storage failure preserves the score and never speaks on release
   assert.equal(h.page.us,1); assert.equal(h.page.rallyDetail,'1 - 0 - 2');
   assert.equal(h.page.rallyServe,'Save failed'); assert.equal(h.sent.length,sent);
 });
+test('holding either rally button saves one rally and sends one catchphrase, consuming release', () => {
+  for (const [hold,tap,serving] of [['wePickled','weWon',0],['theyPickled','theyWon',1]]) {
+    const h=harness(JSON.stringify(rules.create('doubles',serving))); h.hello();
+    const sent=h.sent.length;
+    h.settle(); h.page[hold](); h.advance(1500); h.page[hold]();
+    h.page.pageTouchEnd(); h.page[tap](); h.page.badgeSpeak(); h.page.badgeUndo();
+    assert.equal(h.writes.length,1); assert.equal(h.sent.length,sent+1);
+    const packet=h.sent.at(-1);
+    assert.equal(packet.action,'rally'); assert.equal(packet.pickled,true);
+    assert.equal(packet.state.scores[serving],1); assert.equal(packet.turnover,false);
+    assert.equal(JSON.parse(h.writes[0]).pickled,undefined);
+    h.settle(); h.page[tap]();
+    assert.equal(h.writes.length,2); assert.equal(h.sent.at(-1).pickled,undefined);
+  }
+});
+test('catchphrase carries a turnover but is never repeated by speak, undo or sync', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello();
+  h.page.theyPickled();
+  assert.equal(h.sent.at(-1).turnover,true); assert.equal(h.sent.at(-1).pickled,true);
+  assert.deepEqual(Array.from(h.sent.at(-1).state.scores),[0,0]);
+  h.settle(); h.page.badgeSpeak(); assert.equal(h.sent.at(-1).pickled,undefined);
+  h.settle(); h.page.badgeUndo(); assert.equal(h.sent.at(-1).pickled,undefined);
+  h.page.reconnect(); h.settle(); h.page.wePickled(); assert.equal(h.page.us,1);
+  h.hello(); assert.equal(h.sent.at(-1).action,'sync'); assert.equal(h.sent.at(-1).pickled,undefined);
+});
+test('rally hold is blocked after drag, hide, page change, game over and storage failure', () => {
+  const h=harness(JSON.stringify(rules.create())); h.hello(); const sent=h.sent.length;
+  h.settle(); h.page.pageTouchMove({touches:[{clientX:145,clientY:260}]});
+  h.advance(1000); h.page.wePickled(); h.page.theyPickled();
+  h.settle(); h.page.onHide(); h.page.wePickled();
+  for (const index of [0,1,3]) { h.visit(index); h.page.wePickled(); h.page.theyPickled(); }
+  assert.equal(h.writes.length,0); assert.equal(h.sent.length,sent);
+  const won=rules.correct(rules.create(),{mode:'doubles',scores:[11,5],serving:0,server:2,target:11});
+  const end=harness(JSON.stringify(won)); end.hello(); const before=end.sent.length;
+  end.page.wePickled(); end.page.theyPickled(); end.page.pageTouchEnd(); end.page.weWon();
+  assert.equal(end.writes.length,0); assert.equal(end.sent.length,before);
+  const failed=harness(JSON.stringify(rules.create()),true); failed.hello(); const messages=failed.sent.length;
+  failed.page.wePickled(); failed.page.pageTouchEnd(); failed.page.weWon();
+  assert.equal(failed.writes.length,1); assert.equal(failed.page.us,0); assert.equal(failed.sent.length,messages);
+});
 test('music is never queued offline or retried after timeout, and old phones get an upgrade hint', () => {
   const h=harness(JSON.stringify(rules.create())); h.page.showMusic(); h.settle(); h.page.musicNext();
   assert.ok(h.sent.every(p=>p.type==='hello'));

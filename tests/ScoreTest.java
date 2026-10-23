@@ -42,6 +42,15 @@ public final class ScoreTest {
         invalid(packet("rally",8,7,4,2,1,1).put("turnover",1));
         invalid(packet("rally",8,7,4,2,1,1).put("turnover",JSONObject.NULL));
         check(Score.word(21).equals("twenty one")); check(Score.word(99).equals("ninety nine"));
+        check(new Score(packet("rally",8,7,4,2,0,1).put("pickled",true)).speech().equals("You just got pickled! four. two. one."));
+        check(new Score(packet("rally",8,7,4,2,1,1).put("pickled",true).put("turnover",true)).speech().equals("You just got pickled! Turnover. two. four. one."));
+        check(new Score(packet("rally",8,7,11,9,0,1).put("pickled",true)).speech().equals("You just got pickled! Game. eleven to nine. We win."));
+        check(new Score(singles.put("pickled",true)).speech().equals("You just got pickled! Turnover. two. four."));
+        for (String action : new String[]{"sync","repeat","start","undo","correct"}) {
+            String prefix=action.equals("undo") || action.equals("correct") ? "Correction. " : "";
+            check(new Score(packet(action,8,7,4,2,1,1).put("pickled",true)).speech().equals(prefix+"two. four. one."));
+        }
+        for (Object bad : new Object[]{"true",1,JSONObject.NULL}) invalid(packet("rally",8,7,4,2,1,1).put("pickled",bad));
         invalid(packet("rally",1,0,-1,0,0,1));
         invalid(packet("rally",1,0,0,0,0,3));
         JSONObject fractional=packet("rally",1,0,0,0,0,1); fractional.getJSONObject("state").getJSONArray("scores").put(0,1.5); invalid(fractional);

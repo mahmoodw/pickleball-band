@@ -5,7 +5,7 @@ import org.json.JSONObject;
 final class Score {
     final String mode, action, session, gameId;
     final int us, them, serving, server, target, sequence, revision;
-    final boolean turnover;
+    final boolean turnover, pickled;
     Score(JSONObject packet) throws Exception {
         if (packet.getInt("protocol") != 1 || !"score".equals(packet.getString("type"))) throw new Exception("Unsupported message");
         action = packet.getString("action");
@@ -14,6 +14,9 @@ final class Score {
         Object event = packet.has("turnover") ? packet.get("turnover") : Boolean.FALSE;
         if (!(event instanceof Boolean)) throw new Exception("Invalid turnover");
         turnover = action.equals("rally") && (Boolean)event;
+        Object celebration = packet.has("pickled") ? packet.get("pickled") : Boolean.FALSE;
+        if (!(celebration instanceof Boolean)) throw new Exception("Invalid pickled flag");
+        pickled = action.equals("rally") && (Boolean)celebration;
         session = packet.getString("session"); gameId = packet.getString("gameId");
         if (!session.matches("[a-z0-9-]{5,80}") || !gameId.matches("[a-z0-9-]{5,80}")) throw new Exception("Invalid session");
         sequence = number(packet.get("sequence"), 1, 1000000000);
@@ -37,9 +40,9 @@ final class Score {
     int winner() { return Math.max(us, them) >= target && Math.abs(us - them) >= 2 ? (us > them ? 0 : 1) : -1; }
     String call() { return (serving == 0 ? us + " - " + them : them + " - " + us) + (mode.equals("doubles") ? " - " + server : ""); }
     String speech() {
-        String prefix = action.equals("correct") || action.equals("undo") ? "Correction. " : "";
+        String prefix = pickled ? "You just got pickled! " : action.equals("correct") || action.equals("undo") ? "Correction. " : "";
         if (winner() != -1) return prefix + "Game. " + word(Math.max(us,them)) + " to " + word(Math.min(us,them)) + ". " + (winner() == 0 ? "We win." : "They win.");
-        if (turnover) prefix = "Turnover. ";
+        if (turnover) prefix += "Turnover. ";
         return prefix + word(serving == 0 ? us : them) + ". " + word(serving == 0 ? them : us) + "." + (mode.equals("doubles") ? " " + word(server) + "." : "");
     }
     static String word(int n) {

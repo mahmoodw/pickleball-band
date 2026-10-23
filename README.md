@@ -2,15 +2,25 @@
 
 A standalone Vela band app and Android announcer. Tasker is not required.
 
-Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update both apps to v0.1.11 for announcements without added waits in duck mode and tap/hold controls on the band’s center score area.**
+Download the **[Android APK and band RPK from GitHub Releases](https://github.com/mahmoodw/pickleball-band/releases)**. The release bundle also includes setup instructions and source. **Update both apps to v0.1.12 for a voice chooser and a “You just got pickled!” call when you hold either rally button.**
 
-**Device status:** the user reports the Notify connection and announcements working. Version **0.1.11 removes added delays when Pause music is off and adds a live score plus tap-to-speak/hold-to-undo on Play**. Audio and gesture regressions pass; real-device touch behavior and Bluetooth latency still need checking.
+**Device status:** the user reports the Notify connection and announcements working. Version **0.1.12 adds offline voice selection, voice styles and a rally-button hold gesture**. Automated checks cover score syntax, gesture isolation and audio sequencing; the new voice chooser and rally holds still need checking on a physical phone and band.
 
 The band keeps the game and undo history locally. The phone receives score snapshots and speaks using an offline English Android voice. **Notify for Xiaomi supplies both installation and the phone/band connection. Keep Notify running and connected to the band. Mi Fitness and Tasker are not required.**
 
-## Upgrade to v0.1.11
+## Upgrade to v0.1.12
 
-Install `pickleball-phone-0.1.11.apk` over the existing phone app and update the band through Notify with `pickleball-band-0.1.11.rpk`. The phone update removes added waits in duck mode; the band update adds the center-area score and gestures. Existing settings are retained, with the saved settling gap now used only when Pause music is on. Both apps keep their package names, signing keys and saved-game format. Update in place; uninstalling first may erase settings or the saved game.
+Install `pickleball-phone-0.1.12.apk` over the existing phone app and update the band through Notify with `pickleball-band-0.1.12.rpk`. Open **Announcer voice** on the phone to choose a style and an installed offline English voice. **Save & test** previews “You just got pickled! Turnover. Zero. Zero. One.” Both apps keep their package names, signing keys and saved-game format. Update in place; uninstalling first may erase settings or the saved game. Workout Lab remains an independent experiment available as additional assets on the v0.1.11 release.
+
+**Hold We won or They won** to record one rally and prefix its announcement with **“You just got pickled!”** The band saves the rally first, then sends one announcement containing the catchphrase, any turnover and the resulting score. Releasing the hold cannot add a second rally. The catchphrase is never replayed by Speak, Undo or reconnect; taps retain their normal scoring behavior. Traditional side-out rules still apply when the receiving team wins the rally.
+
+## Announcer voices
+
+Choose **Classic**, **Deep narrator** or **Playful frog** in the phone's **Announcer voice** dialog. These apply pitch and speed settings to an installed English voice. **They are not Morgan Freeman or Kermit recordings, clones or downloadable voice models.** Their sound depends on the phone's speech engine and selected base voice. See [downloadable voice-model research](docs/VOICE-MODELS.md) for the community models found and the remaining integration work.
+
+The base-voice list contains installed English voices that do not require a network connection. Automatic uses an eligible default voice, then a deterministic English fallback. A saved voice that has been removed or belongs to a different engine falls back with a message in the phone's voice status. **Android voice settings** opens the system settings to download voices or change engines; restart the announcer after changing the system engine. Save applies to the next call without restarting for ordinary voice/style changes. Save & test requires the announcer to be running.
+
+The catchphrase and score use a single TTS utterance, so volume boost and pause/ducking cover both together. No cloud service, account or API key is used.
 
 When a rally passes serve to the other team, the phone says **“Turnover” before the new score**. For example, losing serve at 4–2 on server 2 produces **“Turnover. Two. Four. One.”** In doubles this includes the opening 0–0–2 side-out; switching from server 1 to server 2 on the same team does not say turnover. Singles announces turnover whenever the serving team changes after a rally. The band marks the event in the score message, so the phone does not need to have received the preceding rally.
 
@@ -81,11 +91,11 @@ In v0.1.1, “Notify is not responding” could appear after successful discover
 
 ## Install and connect
 
-1. Copy `pickleball-phone-0.1.11.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
-2. Install or update `pickleball-band-0.1.11.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
+1. Copy `pickleball-phone-0.1.12.apk` to your Android phone and open it to install. Android 8 or newer is required. Allow installation from the file manager/browser you use if Android prompts.
+2. Install or update `pickleball-band-0.1.12.rpk` through Notify's custom-app installation flow. The package is an app, not a watchface. The supplied apps have matching package names and signing certificates.
 3. Open **Notify for Xiaomi** and confirm it shows your Band 10 as connected. Keep Notify running. Use a current Notify version that exposes its Interconnect service. This app does not manage pairing or require opening Mi Fitness.
 4. Open **Pickleball** on the phone. Tap **Select band**, select the Band 10. Selection is complete as soon as you choose it.
-5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Voice settings** to install an offline English voice and then stop/start the announcer.
+5. Tap **Start announcer**, allow its notification, wait for the voice status, then tap **Test phone voice**. You should hear “zero, zero, two.” If needed, use **Android voice settings** to install an offline English voice and then stop/start the announcer.
 6. Open **Pickleball** on the band. Start a new game, choosing singles/doubles, who serves first and 11/15/21 points. From Play, swipe right for **Live score**. If offline, tap the phone status to open **Phone link → Reconnect**, or swipe right again for **Settings → Phone connection**. Return with **Back**, wait for **Phone connected** on Live score, then tap **Speak**. The phone should read the displayed call; the band should eventually say **Score spoken**.
 
 The announcer has an ongoing notification while active. Leave it running during play, then use **Stop announcer** or the notification's **Stop** action. Speech uses the phone's selected media output, including connected headphones or speakers. The Announcement volume settings can temporarily raise its level with music paused or ducking requested.
@@ -134,14 +144,14 @@ The Android build creates a local prototype signing key and copies the matching 
 
 Keep `sign/` and `band/sign/` private and preserve them for updates to an installed pair. They are deliberately excluded from the distributable source archive. Rebuilding without those keys creates a new signing identity; Android will require removal of an older differently signed build before installing it. Do not uninstall the band app to update it without first noting the current score, because uninstallation may erase the saved game.
 
-Run `npm test` at the project root for the 30 scoring and band-controller tests, including reconnect/resume, saved-game preservation, swipe/tap isolation, music delivery, stale callbacks and diagnosis errors. For the Android score/protocol tests, download `org.json:json:20240303` from Maven Central as a JVM-only test dependency, then run:
+Run `npm test` at the project root for the scoring and band-controller tests, including reconnect/resume, saved-game preservation, swipe/tap isolation, music delivery, stale callbacks and diagnosis errors. For the Android score/protocol tests, download `org.json:json:20240303` from Maven Central as a JVM-only test dependency, then run:
 
 ```bash
 "$PICKLEBALL_JDK/bin/javac" -cp /path/to/json-20240303.jar -d build/java-tests android/src/com/wmahmood/pickleball/Score.java android/src/com/wmahmood/pickleball/MessageOrder.java tests/ScoreTest.java
 "$PICKLEBALL_JDK/bin/java" -cp build/java-tests:/path/to/json-20240303.jar com.wmahmood.pickleball.ScoreTest
 ```
 
-Those 43 checks exercise score syntax, turnover prefixes, corrections, game-over calls, input validation, duplicate/out-of-order delivery and silent synchronization before speech. They do not emulate Notify or a physical wearable.
+These checks exercise score syntax, turnover prefixes, corrections, game-over calls, input validation, duplicate/out-of-order delivery and silent synchronization before speech. They do not emulate Notify or a physical wearable.
 
 Run the discovery/selection callback regressions without Android dependencies:
 

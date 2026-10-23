@@ -22,6 +22,7 @@ public class AnnouncerService extends Service {
     private MessageApi messages;
     private ServiceApi serviceApi;
     private TextToSpeech tts;
+    private String voiceEngine="";
     private boolean ttsReady, querying, attaching, registered, destroyed;
     // Node IDs are opaque: Notify can use "" for its connected band. Only null
     // means we have no route; never use String.isEmpty() to test attachment.
@@ -72,6 +73,8 @@ public class AnnouncerService extends Service {
             public String route() { return mediaRoute(); }
             public void setVolume(int value) { audio.setStreamVolume(AudioManager.STREAM_MUSIC,value,0); }
             public boolean speak(String id, String text) {
+                // Apply saved choices at playback time, after any prior call has stopped.
+                if (!configureVoice()) return false;
                 Bundle params = new Bundle();
                 params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME,1.0f);
                 return tts.speak(text,TextToSpeech.QUEUE_FLUSH,params,id) != TextToSpeech.ERROR;
@@ -95,16 +98,10 @@ public class AnnouncerService extends Service {
         });
         tts = new TextToSpeech(this, result -> main.post(() -> {
             if (destroyed) return;
-            if (result != TextToSpeech.SUCCESS || tts.setLanguage(Locale.US) < 0) { speechStatus("English speech unavailable. Install an English voice in Android text-to-speech settings."); return; }
-            Voice offline = null;
-            if (tts.getVoices() != null) for (Voice voice : tts.getVoices()) {
-                if (voice.getLocale().getLanguage().equals("en") && !voice.isNetworkConnectionRequired() &&
-                    (voice.getFeatures() == null || !voice.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED))) {
-                    if (offline == null || voice.getLocale().equals(Locale.US)) offline = voice;
-                }
-            }
-            if (offline == null || tts.setVoice(offline) != TextToSpeech.SUCCESS) { speechStatus("Install an offline English voice in Android text-to-speech settings, then restart the announcer."); return; }
-            tts.setAudioAttributes(speechAttributes); tts.setSpeechRate(0.85f); ttsReady = true; speechStatus("Offline English voice ready");
+            if (result != TextToSpeech.SUCCESS) { speechStatus("Speech engine unavailable. Check Android text-to-speech settings."); return; }
+            voiceEngine=tts.getDefaultEngine();
+            tts.setAudioAttributes(speechAttributes); ttsReady = true;
+            if (configureVoice()) speechStatus("Offline English voice ready");
         }));
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             public void onStart(String id) {}
@@ -116,7 +113,42 @@ public class AnnouncerService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int id) {
         if (intent != null && "stop".equals(intent.getAction())) { stopSelf(); return START_NOT_STICKY; }
         if (intent != null && "test".equals(intent.getAction())) speak("Zero. Zero. Two.", null);
+        if (intent != null && "testVoice".equals(intent.getAction())) speak("You just got pickled! Turnover. Zero. Zero. One.", null);
         return START_NOT_STICKY;
+    }
+    private boolean configureVoice() {
+        SharedPreferences prefs=getSharedPreferences(PREFS,0);
+        try {
+            List<Voice> voices=OfflineVoices.available(tts);
+            if (voices.isEmpty()) {
+                prefs.edit().putString("voiceChoice","No offline English voice installed").apply();
+                speechStatus("Install an offline English voice in Android text-to-speech settings, then restart the announcer.");
+                return false;
+            }
+            String wanted=prefs.getString(AnnouncerVoice.VOICE_KEY,"");
+            String engine=prefs.getString(AnnouncerVoice.ENGINE_KEY,"");
+            Voice selected=null;
+            if (engine.equals(voiceEngine)) for (Voice voice : voices) {
+                if (voice.getName().equals(wanted)) { selected=voice; break; }
+            }
+            boolean fallback=!wanted.isEmpty() && selected==null;
+            if (selected==null) {
+                Voice normal=tts.getDefaultVoice();
+                selected=normal!=null && voices.contains(normal) ? normal : voices.get(0);
+            }
+            AnnouncerVoice style=AnnouncerVoice.find(prefs.getString(AnnouncerVoice.STYLE_KEY,"classic"));
+            if (tts.setVoice(selected)!=TextToSpeech.SUCCESS || tts.setPitch(style.pitch)!=TextToSpeech.SUCCESS ||
+                tts.setSpeechRate(style.rate)!=TextToSpeech.SUCCESS) {
+                prefs.edit().putString("voiceChoice","Could not apply voice; choose another in Announcer voice").apply();
+                return false;
+            }
+            prefs.edit().putString("voiceChoice",style.label + " · " + OfflineVoices.label(selected) +
+                (fallback ? "\nSaved voice unavailable; using an installed English voice." : "")).apply();
+            return true;
+        } catch (RuntimeException error) {
+            prefs.edit().putString("voiceChoice","Voice unavailable. Check Android voice settings.").apply();
+            return false;
+        }
     }
     private void discover() {
         if (destroyed) return;

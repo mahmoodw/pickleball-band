@@ -35,10 +35,10 @@
     </div>
     <stack class="rallyPage">
       <div class="rallyHalves">
-        <div class="rallyButton ours" onclick="weWon">
+        <div class="rallyButton ours" onclick="weWon" onlongpress="wePickled">
           <text class="rallyTitle oursText">We won</text><text class="rallyCaption oursText">the rally</text>
         </div>
-        <div class="rallyButton theirs" onclick="theyWon">
+        <div class="rallyButton theirs" onclick="theyWon" onlongpress="theyPickled">
           <text class="rallyTitle">They won</text><text class="rallyCaption">the rally</text>
         </div>
       </div>
@@ -317,10 +317,12 @@ export default {
       if (this.linkDetails.indexOf('Diagnosis ') !== 0) this.linkDetails = this.connectionError('Send', error, code);
     }});
   },
-  send(action) {
+  send(action, pickled) {
     if (!challenge) { this.phoneStatus = 'Phone offline - score saved'; this.hello(); return; }
     sequence++;
     const p = rules.packet(game, action, sequence, session);
+    // Gesture metadata belongs only to this send, never to saved game state.
+    if (action === 'rally' && pickled === true) p.pickled = true;
     p.challenge = challenge;
     const sent = sequence;
     this.phoneStatus = action === 'sync' ? 'Connecting...' : 'Sending score...';
@@ -331,7 +333,7 @@ export default {
       clearTimeout(ackTimer); challenge = ''; this.phoneStatus = 'Phone offline - score saved';
     }});
   },
-  save(next, action) {
+  save(next, action, pickled) {
     if (busy || next === game) return;
     busy = true;
     storage.set({key: 'pickleball.game.v1', value: JSON.stringify(next), success: () => {
@@ -340,11 +342,18 @@ export default {
       else if (action === 'correct') this.pageIndex = 1;
       this.screen = 'game'; this.render();
       try { vibrator.vibrate({mode: 'short'}); } catch (_) {}
-      this.send(action);
+      this.send(action, pickled);
     }, fail: () => { busy = false; this.rallyServe = 'Save failed'; this.notice = 'Save failed - try again'; this.newWarning = 'Save failed - try again'; }});
   },
   weWon() { if (game && !badgeHandled && this.canRallyTap()) this.save(rules.rally(game, 0), 'rally'); },
   theyWon() { if (game && !badgeHandled && this.canRallyTap()) this.save(rules.rally(game, 1), 'rally'); },
+  wePickled() { this.pickledRally(0); },
+  theyPickled() { this.pickledRally(1); },
+  pickledRally(team) {
+    if (!game || busy || badgeHandled || !this.canRallyTap()) return;
+    badgeHandled = true;
+    this.save(rules.rally(game, team), 'rally', true);
+  },
   // Native longpress may be followed by click on release. Consume this entire
   // touch until the next touchstart, including repeated longpress callbacks.
   badgeSpeak() {
